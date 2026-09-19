@@ -1,42 +1,25 @@
-# yHatePDF — implementation notes
+# yHatePDF implementation notes
 
-## What transfers from iLoveMD
+## Product and design
 
-The family resemblance comes from the monochrome, high-contrast dropzone, concise technical labels, keyboard-first command menu, and a client-only interaction model. The old 50 MB free-tier validation and analytics counter were deliberately not carried over: yHatePDF has no product-imposed file cap and must not send a document or usage event to a server.
+The landing page introduces the project and lists tools by category. Every registry entry has its own `/tools/<id>` route. The header, utility strip, pixel-heart logo, monochrome borders, typography (Space Grotesk, JetBrains Mono, Playfair Display), editorial hero, and dark mode follow the iLoveMD visual system. The PDF processing architecture is separate.
 
-## V1 architecture
+`lib/tool-registry.ts` is the source of truth for names, routes, categories, input types, and readiness. It contains 51 entries. Only tools with an implemented and testable local path are marked `ready`; the rest have an explicit research page and do not request files. This is not yet a 45-function release.
 
-The app is a static React surface. `lib/tool-registry.ts` is the only inventory of tools, aliases, category colour, accepted input, and implementation state. `components/PdfWorkspace.tsx` owns local UI state. Document bytes are read from the browser File API and processed by `lib/pdf-client.ts`; no action calls an API route. `pdf-lib` is statically bundled to prevent the stale Vite dynamic-module failure observed during local testing; PDF.js remains lazy and browser-only for extraction and page thumbnails.
+## Local processing
 
-The current reliable operations are merge, visual page organizing, selected-range or individually selected split / per-page ZIP, targeted rotate, image-to-PDF, and text extraction. Planned tools surface their actual browser constraint instead of claiming readiness.
+`components/PdfWorkspace.tsx` holds selected browser `File` objects, page plans, image ordering, and per-tool options. `lib/pdf-client.ts` executes operations locally with pdf-lib, PDF.js, JSZip, Canvas, and the File API. PDF.js uses the version-matched worker at `/pdf.worker.min.mjs`; the preview path surfaces rendering failures instead of silently displaying blank placeholders. Documents are not posted to an API. The app may fetch its web fonts; that request does not contain document data.
 
-## Page plan and filenames
+The page plan stores `{fileIndex,pageIndex,rotation,id}` for each output page. Merge can append more PDFs without rebuilding or losing an existing plan. Per-page cards have rendered thumbnails, selection, reordering, duplication, rotation, removal, and a larger rendered preview when those edits are relevant. Split supports visual multi-selection, output-position ranges, one combined PDF, and separate-page ZIP. Rotate updates the visible plan before export, including selected-page left/right actions. PDF-to-image and text-based conversions use selected source pages. Image-to-PDF shows image thumbnails and supports adding, reordering, and removing images.
 
-Every page-based operation first builds a local visual page plan. The same plan powers merge, split, rotate, and organize: pages can be dragged, nudged, removed, selected by thumbnail, or selected with a range. Exports use predictable names such as `yhatepdf_merged__source-a-source-b__12-pages.pdf`, `yhatepdf_split__source__page-3.pdf`, `yhatepdf_rotated__source__4-pages.pdf`, and `yhatepdf_text__source.txt`.
+Output names encode the operation, up to two source stems, and a detail such as page count: `yhatepdf_merged__source-a-source-b__8-pages.pdf`. Split ZIP members encode output part and source page to avoid collisions if a page is duplicated. Compression compares candidate byte lengths; it never claims savings when a source cannot be made smaller. Optional image recompression warns that searchable text may be lost.
 
-## Capability and dependency matrix
+## Shipping boundary
 
-| Tool family | Local path | Engine | Confidence | Current status |
-| --- | --- | --- | --- | --- |
-| merge / ranges / rotate | rewrite page plan | pdf-lib (MIT) | high | shipped |
-| image to PDF | embed local images | pdf-lib (MIT) | high | shipped |
-| extract text | browser PDF parse | PDF.js (Apache-2.0) | high | shipped |
-| page organiser / crop | page plan + boxes | pdf-lib | high | next |
-| watermark / numbers / metadata | draw & rewrite | pdf-lib | high | next |
-| encryption / unlock | PDF encryption APIs | pdf-lib + compatibility probes | medium | research gate |
-| compression | image raster/re-encode | Canvas / worker | medium | research gate |
-| OCR | local language model / wasm | Tesseract.js evaluation | medium | research gate |
-| Office conversion | document-specific rendering | browser-native / WASM evaluation | low-medium | research gate |
-| existing-text editing / repair | PDF object rewriting | specialist engine needed | low | deliberately not promised |
+Ready: merge, split, organize, rotate, delete/extract/reverse/duplicate/odd/even pages, crop, resize, compress, JPG/PNG/ZIP page export, PDF text/Markdown/HTML extraction, images/camera photos/CSV/Markdown/text to PDF, page numbers, watermark, headers/footers, flatten, grayscale, invert, metadata inspection/removal.
 
-`pdf-lib` and jsPDF are MIT; PDF.js is Apache-2.0; JSZip is dual MIT/GPL-3.0. JSZip is used only for locally-created split archives. Before distributing a commercial build, retain each package notice in a generated third-party notices file.
+In research: faithful Office round-trips, URL/HTML rendering, signing and full annotation/editing, password encryption/decryption, permanent redaction, OCR, embedded-image extraction, visual comparison, damaged-file repair, reliable blank-page detection, and a unified Studio. These must not be presented as functional until independently validated. In particular, permanent redaction and password removal need stronger correctness and safety guarantees than a cosmetic overlay or `ignoreEncryption` flag. Camera capture uses the browser's `capture="environment"` file input where supported; it is not an OCR scanner or automatic perspective correction.
 
-## Risk controls and delivery order
+## Browser smoke checks
 
-Permanent redaction, faithful Office conversion, repair, and alteration of existing PDF text cannot be represented as ordinary UI toggles. They stay out of the completed set until a local engine proves output fidelity with fixture PDFs. Future heavy operations belong in Workers; the page-plan model keeps inputs immutable and makes that migration direct.
-
-1. Foundation + reliable page primitives (this slice).
-2. Page ordering, crop, watermark, page numbers, metadata hygiene.
-3. Controlled security and redaction fixtures.
-4. Worker extraction/rendering, local recents and PWA.
-5. Only then evaluate compression, OCR, and Office capabilities.
+Generate synthetic, non-sensitive fixtures with `node scripts/smoke-fixtures.mjs /private/tmp`. The checked flows include a five-page merge from two PDFs, appending another PDF, visible thumbnails, split range selection and ZIP export, selected-page rotation with a full-size preview, CSV and Markdown PDF exports, image ordering before PDF export, and compression (74% smaller on the image-heavy fixture; no false claim of savings on a tiny text PDF). Run `./node_modules/.bin/tsc --noEmit` and `npm run build` before publication.

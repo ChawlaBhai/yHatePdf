@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
+import AppShell from "@/components/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "yHatePDF — private PDF tools, on your device",
   description: "Free local-first PDF tools. No account, no watermark, no uploads.",
-  other: {
-    "codex-preview": "development",
-  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
@@ -20,7 +18,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <head><script dangerouslySetInnerHTML={{__html:"try{if(localStorage.getItem('yhatepdf_theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}"}} /></head>
+      <body className="antialiased"><AppShell>{children}</AppShell></body>
     </html>
   );
 }
