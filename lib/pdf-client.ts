@@ -1,11 +1,48 @@
 "use client";
 
-const download = (blob: Blob, filename: string) => { const href = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = href; anchor.download = filename; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(href), 1_000); };
-const outputName = (name: string, suffix: string, extension = "pdf") => `${name.replace(/\.pdf$/i, "")}-${suffix}.${extension}`;
+import JSZip from "jszip";
+import { PDFDocument, degrees as toDegrees } from "pdf-lib";
 
-export async function mergePdfs(files: File[]) { const { PDFDocument } = await import("pdf-lib"); const output = await PDFDocument.create(); for (const file of files) { const source = await PDFDocument.load(await file.arrayBuffer()); const pages = await output.copyPages(source, source.getPageIndices()); pages.forEach((page) => output.addPage(page)); } download(new Blob([await output.save()], { type: "application/pdf" }), "merged.pdf"); }
-function parseRanges(input: string, max: number) { const values = new Set<number>(); for (const group of input.split(",").map((part) => part.trim()).filter(Boolean)) { const [first, last = first] = group.split("-").map((value) => Number(value.trim())); if (!Number.isInteger(first) || !Number.isInteger(last) || first < 1 || last < first || last > max) throw new Error(`Use page numbers between 1 and ${max}; for example 1-3, 6.`); for (let page = first; page <= last; page += 1) values.add(page - 1); } if (!values.size) throw new Error("Choose at least one page."); return [...values].sort((a, b) => a - b); }
-export async function splitPdf(file: File, ranges: string, separatePages: boolean) { const { PDFDocument } = await import("pdf-lib"); const source = await PDFDocument.load(await file.arrayBuffer()); const selected = parseRanges(ranges, source.getPageCount()); if (!separatePages) { const output = await PDFDocument.create(); (await output.copyPages(source, selected)).forEach((page) => output.addPage(page)); download(new Blob([await output.save()], { type: "application/pdf" }), outputName(file.name, "pages")); return; } const JSZip = (await import("jszip")).default; const archive = new JSZip(); for (const index of selected) { const output = await PDFDocument.create(); output.addPage((await output.copyPages(source, [index]))[0]); archive.file(outputName(file.name, `page-${index + 1}`), await output.save()); } download(await archive.generateAsync({ type: "blob" }), outputName(file.name, "split", "zip")); }
-export async function rotatePdf(file: File, degrees: number) { const { PDFDocument, degrees: toDegrees } = await import("pdf-lib"); const pdf = await PDFDocument.load(await file.arrayBuffer()); pdf.getPages().forEach((page) => page.setRotation(toDegrees((page.getRotation().angle + degrees) % 360))); download(new Blob([await pdf.save()], { type: "application/pdf" }), outputName(file.name, "rotated")); }
-export async function imagesToPdf(files: File[]) { const { PDFDocument } = await import("pdf-lib"); const pdf = await PDFDocument.create(); for (const file of files) { const bytes = await file.arrayBuffer(); const image = file.type === "image/png" ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes); const page = pdf.addPage([image.width, image.height]); page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height }); } download(new Blob([await pdf.save()], { type: "application/pdf" }), "images.pdf"); }
-export async function extractText(file: File) { const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs"); const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableWorker: true }); const document = await task.promise; const pages: string[] = []; for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) { const page = await document.getPage(pageNumber); const text = await page.getTextContent(); pages.push(text.items.map((item) => ("str" in item ? item.str : "")).join(" ")); } download(new Blob([pages.join("\n\n\f\n\n")], { type: "text/plain;charset=utf-8" }), outputName(file.name, "text", "txt")); return document.numPages; }
+export type PagePlanItem = { id: string; fileIndex: number; pageIndex: number; rotation: number };
+export type PdfPageInfo = { fileIndex: number; pageIndex: number; thumbnail: string };
+
+const safePart = (value: string) => value.toLowerCase().replace(/\.pdf$/i, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 42) || "document";
+const localName = (operation: string, files: File[], detail?: string, extension = "pdf") => `yhatepdf_${operation}__${files.slice(0, 2).map((file) => safePart(file.name)).join("-") || "document"}${detail ? `__${detail}` : ""}.${extension}`;
+const download = (blob: Blob, filename: string) => { const href = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = href; anchor.download = filename; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(href), 1500); };
+const loadPdfJs = () => import("pdfjs-dist/legacy/build/pdf.mjs");
+
+export async function buildPagePlan(files: File[]) {
+  const plan: PagePlanItem[] = [];
+  for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+    const pdf = await PDFDocument.load(await files[fileIndex].arrayBuffer());
+    for (let pageIndex = 0; pageIndex < pdf.getPageCount(); pageIndex += 1) plan.push({ id: `${fileIndex}-${pageIndex}-${crypto.randomUUID()}`, fileIndex, pageIndex, rotation: 0 });
+  }
+  return plan;
+}
+
+export async function createThumbnails(files: File[], onPage: (page: PdfPageInfo) => void) {
+  const pdfjs = await loadPdfJs();
+  for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+    const task = pdfjs.getDocument({ data: new Uint8Array(await files[fileIndex].arrayBuffer()), disableWorker: true });
+    const pdf = await task.promise;
+    for (let pageIndex = 0; pageIndex < pdf.numPages; pageIndex += 1) {
+      const page = await pdf.getPage(pageIndex + 1); const viewport = page.getViewport({ scale: 0.3 }); const canvas = document.createElement("canvas"); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); const context = canvas.getContext("2d"); if (!context) continue;
+      await page.render({ canvasContext: context, viewport }).promise; onPage({ fileIndex, pageIndex, thumbnail: canvas.toDataURL("image/jpeg", 0.72) });
+    }
+    await task.destroy();
+  }
+}
+
+async function sourcePdfs(files: File[]) { return Promise.all(files.map(async (file) => PDFDocument.load(await file.arrayBuffer()))); }
+export async function exportPagePlan(files: File[], plan: PagePlanItem[], operation = "merged") {
+  if (!plan.length) throw new Error("Keep at least one page in the output."); const sources = await sourcePdfs(files); const output = await PDFDocument.create();
+  for (const item of plan) { const [page] = await output.copyPages(sources[item.fileIndex], [item.pageIndex]); if (item.rotation) page.setRotation(toDegrees(item.rotation)); output.addPage(page); }
+  download(new Blob([await output.save()], { type: "application/pdf" }), localName(operation, files, `${plan.length}-pages`));
+}
+export async function exportSplit(files: File[], selected: PagePlanItem[], separatePages: boolean) {
+  if (!selected.length) throw new Error("Select one or more pages to split."); if (!separatePages) return exportPagePlan(files, selected, "split"); const sources = await sourcePdfs(files); const archive = new JSZip();
+  for (let index = 0; index < selected.length; index += 1) { const item = selected[index]; const output = await PDFDocument.create(); const [page] = await output.copyPages(sources[item.fileIndex], [item.pageIndex]); if (item.rotation) page.setRotation(toDegrees(item.rotation)); output.addPage(page); archive.file(localName("split", [files[item.fileIndex]], `page-${item.pageIndex + 1}`), await output.save()); }
+  download(await archive.generateAsync({ type: "blob" }), localName("split", files, `${selected.length}-pages`, "zip"));
+}
+export async function imagesToPdf(files: File[]) { const pdf = await PDFDocument.create(); for (const file of files) { const bytes = await file.arrayBuffer(); const image = file.type === "image/png" ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes); const page = pdf.addPage([image.width, image.height]); page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height }); } download(new Blob([await pdf.save()], { type: "application/pdf" }), localName("images", files, `${files.length}-images`)); }
+export async function extractText(file: File) { const pdfjs = await loadPdfJs(); const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableWorker: true }); const document = await task.promise; const pages: string[] = []; for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) { const page = await document.getPage(pageNumber); const text = await page.getTextContent(); pages.push(text.items.map((item) => ("str" in item ? item.str : "")).join(" ")); } await task.destroy(); download(new Blob([pages.join("\n\n\f\n\n")], { type: "text/plain;charset=utf-8" }), localName("text", [file], undefined, "txt")); return document.numPages; }

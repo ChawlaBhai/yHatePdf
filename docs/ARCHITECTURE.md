@@ -6,9 +6,13 @@ The family resemblance comes from the monochrome, high-contrast dropzone, concis
 
 ## V1 architecture
 
-The app is a static React surface. `lib/tool-registry.ts` is the only inventory of tools, aliases, category colour, accepted input, and implementation state. `components/PdfWorkspace.tsx` owns local UI state. Document bytes are read from the browser File API and processed by `lib/pdf-client.ts`; no action calls an API route. `pdf-lib` is imported only when an operation runs. PDF.js is imported for text extraction; it is intentionally not part of the first route payload.
+The app is a static React surface. `lib/tool-registry.ts` is the only inventory of tools, aliases, category colour, accepted input, and implementation state. `components/PdfWorkspace.tsx` owns local UI state. Document bytes are read from the browser File API and processed by `lib/pdf-client.ts`; no action calls an API route. `pdf-lib` is statically bundled to prevent the stale Vite dynamic-module failure observed during local testing; PDF.js remains lazy and browser-only for extraction and page thumbnails.
 
-The current reliable operations are merge, selected-range split / per-page ZIP, rotate, image-to-PDF, and text extraction. Planned tools surface their actual browser constraint instead of claiming readiness.
+The current reliable operations are merge, visual page organizing, selected-range or individually selected split / per-page ZIP, targeted rotate, image-to-PDF, and text extraction. Planned tools surface their actual browser constraint instead of claiming readiness.
+
+## Page plan and filenames
+
+Every page-based operation first builds a local visual page plan. The same plan powers merge, split, rotate, and organize: pages can be dragged, nudged, removed, selected by thumbnail, or selected with a range. Exports use predictable names such as `yhatepdf_merged__source-a-source-b__12-pages.pdf`, `yhatepdf_split__source__page-3.pdf`, `yhatepdf_rotated__source__4-pages.pdf`, and `yhatepdf_text__source.txt`.
 
 ## Capability and dependency matrix
 
