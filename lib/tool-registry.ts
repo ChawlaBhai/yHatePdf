@@ -24,8 +24,8 @@ const metadata: Record<ToolCategory, { icon: LucideIcon; accept: string; output:
   create: { icon: FilePlus2, accept: pdf, output: "PDF", engine: "pdf-lib" },
   utility: { icon: Settings2, accept: pdf, output: "PDF", engine: "PDF.js" },
 };
-const ready = new Set(["merge", "split", "rotate", "organize", "delete-pages", "extract-pages", "reverse-pages", "duplicate-pages", "odd-pages", "even-pages", "crop", "resize", "compress", "page-numbers", "watermark", "headers-footers", "metadata", "remove-metadata", "images-to-pdf", "scan-to-pdf", "pdf-to-text", "pdf-to-markdown", "pdf-to-html", "pdf-to-jpg", "pdf-to-png", "pdf-to-zip", "create-pdf", "markdown-to-pdf", "csv-to-pdf", "grayscale", "invert", "flatten"]);
-const make = (id: string, name: string, description: string, category: ToolCategory, keywords: string[], icon?: LucideIcon, accept?: string, output?: string): Tool => ({ id, name, description, category, keywords, icon: icon ?? metadata[category].icon, accept: accept ?? metadata[category].accept, output: output ?? metadata[category].output, engine: ["csv-to-pdf","markdown-to-pdf","create-pdf"].includes(id) ? "pdf-lib + browser File API" : ["images-to-pdf","scan-to-pdf"].includes(id) ? "pdf-lib + Canvas" : metadata[category].engine, status: ready.has(id) ? "ready" : "research", route: `/tools/${id}`, mobile: true, offline: true });
+const ready = new Set(["merge", "split", "rotate", "organize", "delete-pages", "extract-pages", "reverse-pages", "duplicate-pages", "odd-pages", "even-pages", "crop", "resize", "compress", "page-numbers", "watermark", "headers-footers", "metadata", "remove-metadata", "images-to-pdf", "scan-to-pdf", "pdf-to-text", "pdf-to-markdown", "pdf-to-html", "pdf-to-jpg", "pdf-to-png", "pdf-to-webp", "pdf-to-zip", "create-pdf", "markdown-to-pdf", "csv-to-pdf", "grayscale", "invert", "flatten", "compare", "remove-blank-pages", "sign", "html-to-pdf", "pdf-to-word", "word-to-pdf", "pdf-to-excel", "excel-to-pdf", "pdf-to-powerpoint", "studio", "annotate", "extract-images"]);
+const make = (id: string, name: string, description: string, category: ToolCategory, keywords: string[], icon?: LucideIcon, accept?: string, output?: string): Tool => ({ id, name, description, category, keywords, icon: icon ?? metadata[category].icon, accept: accept ?? metadata[category].accept, output: output ?? metadata[category].output, engine: ["csv-to-pdf","markdown-to-pdf","create-pdf"].includes(id) ? "pdf-lib + browser File API" : ["images-to-pdf","scan-to-pdf"].includes(id) ? "pdf-lib + Canvas" : ["pdf-to-word","word-to-pdf","excel-to-pdf","pdf-to-excel","pdf-to-powerpoint"].includes(id) ? "local Office conversion" : id === "html-to-pdf" ? "jsPDF + Canvas" : metadata[category].engine, status: ready.has(id) ? "ready" : "research", route: `/tools/${id}`, mobile: true, offline: true });
 
 export const tools: Tool[] = [
   make("merge", "Merge PDF", "Combine files and reorder individual pages before export.", "organize", ["combine", "join", "append", "mix"], Combine),
@@ -43,17 +43,18 @@ export const tools: Tool[] = [
   make("compress", "Compress PDF", "Try lossless optimization or optional image recompression, with an honest size comparison.", "convert", ["smaller", "reduce", "mb"], FileDown),
   make("pdf-to-jpg", "PDF to JPG", "Render selected pages to JPG files.", "convert", ["jpeg", "image", "photo"], FileImage, pdf, "JPG / ZIP"),
   make("pdf-to-png", "PDF to PNG", "Render selected pages to PNG files.", "convert", ["image", "transparent"], FileImage, pdf, "PNG / ZIP"),
+  make("pdf-to-webp", "PDF to WebP", "Render selected pages to compact WebP images.", "convert", ["image", "webp"], FileImage, pdf, "WebP / ZIP"),
   make("pdf-to-zip", "PDF pages to ZIP", "Download every selected page as an image archive.", "convert", ["archive", "images"], FileDown, pdf, "ZIP"),
   make("pdf-to-text", "PDF to text", "Extract the selectable text from your PDF.", "convert", ["txt", "extract words", "copy"], Type, pdf, "TXT"),
   make("pdf-to-markdown", "PDF to Markdown", "Extract text into a page-aware Markdown document.", "convert", ["md", "markdown", "notes"], FileText, pdf, "MD"),
   make("pdf-to-html", "PDF to HTML", "Extract selectable text into page-aware HTML.", "convert", ["web", "markup"], FileText, pdf, "HTML"),
-  make("pdf-to-word", "PDF to Word", "Convert PDF structure to editable DOCX.", "convert", ["docx", "office"], FileText, pdf, "DOCX"),
-  make("word-to-pdf", "Word to PDF", "Turn a DOCX document into a PDF.", "convert", ["docx", "office"], FileText, ".docx", "PDF"),
-  make("excel-to-pdf", "Excel to PDF", "Render spreadsheet pages to PDF.", "convert", ["xlsx", "sheets"], FileText, ".xlsx,.csv", "PDF"),
-  make("pdf-to-excel", "PDF to Excel", "Extract structured tables to XLSX.", "convert", ["xlsx", "tables"], FileText, pdf, "XLSX"),
+  make("pdf-to-word", "PDF to Word", "Export selectable text into an editable DOCX; source layout and images are not preserved.", "convert", ["docx", "office"], FileText, pdf, "DOCX"),
+  make("word-to-pdf", "Word to PDF", "Reflow DOCX text, headings and tables into PDF; images and original layout are excluded.", "convert", ["docx", "office"], FileText, ".docx", "PDF"),
+  make("excel-to-pdf", "Excel to PDF", "Render workbook cell data into paginated PDF tables; charts and original styling are excluded.", "convert", ["xlsx", "sheets"], FileText, ".xlsx", "PDF"),
+  make("pdf-to-excel", "PDF to Excel", "Collect selectable PDF text by visual row into XLSX sheets; not table reconstruction.", "convert", ["xlsx", "tables"], FileText, pdf, "XLSX"),
   make("powerpoint-to-pdf", "PowerPoint to PDF", "Render PPTX slides as PDF pages.", "convert", ["pptx", "slides"], FileText, ".pptx", "PDF"),
-  make("pdf-to-powerpoint", "PDF to PowerPoint", "Convert PDF pages to editable PPTX.", "convert", ["pptx", "slides"], FileText, pdf, "PPTX"),
-  make("html-to-pdf", "HTML to PDF", "Render a local HTML file into PDF.", "convert", ["webpage", "website"], FileText, ".html,.htm", "PDF"),
+  make("pdf-to-powerpoint", "PDF to PowerPoint", "Preserve selected PDF pages as image-backed slides; slide content is not editable.", "convert", ["pptx", "slides"], FileText, pdf, "PPTX"),
+  make("html-to-pdf", "HTML to PDF", "Turn local semantic HTML into PDF; scripts, images, CSS and external assets are excluded.", "convert", ["webpage", "website"], FileText, ".html,.htm", "PDF"),
   make("markdown-to-pdf", "Markdown to PDF", "Turn Markdown headings, lists, and text into a PDF.", "convert", ["md", "notes"], FileText, ".md,.markdown,.txt", "PDF"),
   make("csv-to-pdf", "CSV to PDF", "Make a paginated PDF table from CSV.", "convert", ["spreadsheet", "table"], FileText, ".csv", "PDF"),
   make("images-to-pdf", "Images to PDF", "Combine JPG, PNG, and WebP images into one PDF.", "create", ["jpg", "png", "photo", "scan"], ImageDown, img),
@@ -62,8 +63,8 @@ export const tools: Tool[] = [
   make("page-numbers", "Add page numbers", "Number pages at the top or bottom.", "edit", ["number", "pagination"], Type),
   make("watermark", "Watermark PDF", "Add a text watermark to selected pages.", "edit", ["stamp", "brand", "draft"], Stamp),
   make("headers-footers", "Headers and footers", "Add repeating text to PDF pages.", "edit", ["heading", "footer"], Type),
-  make("sign", "Sign PDF", "Add a drawn or typed signature.", "edit", ["signature", "autograph"], PenLine),
-  make("annotate", "Annotate PDF", "Add text, highlights, and drawings.", "edit", ["highlight", "draw", "markup"], PenLine),
+  make("sign", "Sign PDF", "Place a typed or drawn visual signature on selected pages (not a digital certificate).", "edit", ["signature", "autograph"], PenLine),
+  make("annotate", "Annotate PDF", "Place a text note and/or translucent highlight on selected pages.", "edit", ["highlight", "draw", "markup"], PenLine),
   make("edit-pdf", "Edit PDF", "Work with existing content and new objects.", "edit", ["change text", "editor"], PenLine),
   make("flatten", "Flatten PDF", "Flatten form fields into the pages.", "edit", ["forms", "lock layout"], Layers3),
   make("grayscale", "Grayscale PDF", "Convert pages to grayscale images.", "edit", ["black and white", "monochrome"], FileImage),
@@ -74,11 +75,11 @@ export const tools: Tool[] = [
   make("metadata", "Inspect metadata", "See PDF author, title, dates, and page count.", "security", ["privacy", "properties", "inspect"], Search, pdf, "Report"),
   make("remove-metadata", "Remove metadata", "Clear common identifying PDF metadata.", "security", ["privacy", "clean", "author"], ShieldCheck),
   make("ocr", "Searchable PDF", "Recognize text in scanned pages locally.", "utility", ["ocr", "scan", "recognize"], ScanText),
-  make("compare", "Compare PDFs", "Compare two document versions.", "utility", ["diff", "changes"], Layers3),
+  make("compare", "Compare PDFs", "Compare page text and sampled visuals in two PDF versions.", "utility", ["diff", "changes"], Layers3, pdf, "HTML report"),
   make("repair", "Repair PDF", "Recover pages from a damaged document.", "utility", ["fix", "broken"], Settings2),
-  make("extract-images", "Extract images", "Save embedded images from a PDF.", "utility", ["pictures", "photos"], FileImage),
-  make("remove-blank-pages", "Remove blank pages", "Find and drop empty pages.", "utility", ["empty", "clean"], Scissors),
-  make("studio", "PDF Studio", "Open a multi-tool PDF editor and viewer.", "utility", ["edit", "viewer", "workspace"], Grid2X2),
+  make("extract-images", "Extract images", "Save supported embedded raster images from selected pages as a ZIP.", "utility", ["pictures", "photos"], FileImage, pdf, "PNG ZIP"),
+  make("remove-blank-pages", "Remove blank pages", "Find likely white pages, review them, then remove selected pages.", "utility", ["empty", "clean"], Scissors),
+  make("studio", "PDF Studio", "Mix files, edit the visual page plan, and choose an export action in one workspace.", "utility", ["edit", "viewer", "workspace"], Grid2X2),
 ];
 
 export const toolById = (id: string) => tools.find((tool) => tool.id === id);

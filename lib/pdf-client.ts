@@ -1,6 +1,7 @@
 "use client";
 
 import JSZip from "jszip";
+import { jsPDF } from "jspdf";
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 
 export type PagePlanItem = { id: string; fileIndex: number; pageIndex: number; rotation: number };
@@ -93,15 +94,63 @@ export async function exportAdjusted(files: File[], plan: PagePlanItem[], operat
   await downloadPdf(pdf, operation, files, `${pages.length}-pages`);
 }
 
+export async function exportSignature(files: File[], plan: PagePlanItem[], selectedIds: string[], mark: { text: string; image?: string; position: "bottom-left" | "bottom-right" | "top-left" | "top-right" }) {
+  if (!selectedIds.length) throw new Error("Select at least one page to sign.");
+  if (!mark.image && !mark.text.trim()) throw new Error("Type a signature or draw one before export.");
+  const pdf = await assemble(files, plan);
+  const font = mark.image ? null : await pdf.embedFont(StandardFonts.TimesRomanItalic);
+  const image = mark.image ? await pdf.embedPng(mark.image) : null;
+  const targets = new Set(selectedIds);
+  for (const [index, page] of pdf.getPages().entries()) {
+    if (!targets.has(plan[index].id)) continue;
+    const { width, height } = page.getSize();
+    const maxWidth = Math.min(180, width - 48);
+    if (image) {
+      const scale = Math.min(maxWidth / image.width, 70 / image.height);
+      const w = image.width * scale, h = image.height * scale;
+      page.drawImage(image, { x: mark.position.endsWith("right") ? width - w - 28 : 28, y: mark.position.startsWith("top") ? height - h - 28 : 28, width: w, height: h });
+    } else if (font) {
+      const signature = mark.text.trim();
+      let size = 30;
+      while (size > 12 && font.widthOfTextAtSize(signature, size) > maxWidth) size -= 1;
+      if (font.widthOfTextAtSize(signature, size) > maxWidth) throw new Error("Signature text is too long for this page. Shorten it or draw it.");
+      const textWidth = font.widthOfTextAtSize(signature, size);
+      page.drawText(signature, { x: mark.position.endsWith("right") ? width - textWidth - 28 : 28, y: mark.position.startsWith("top") ? height - size - 28 : 28, font, size, color: rgb(.08, .16, .34) });
+    }
+  }
+  await downloadPdf(pdf, "visually-signed", files, `${selectedIds.length}-pages`);
+}
+
+export async function exportAnnotation(files: File[], plan: PagePlanItem[], selectedIds: string[], annotation: { text: string; x: number; top: number; highlight: boolean }) {
+  if (!selectedIds.length) throw new Error("Select at least one page to annotate.");
+  if (!annotation.text.trim() && !annotation.highlight) throw new Error("Enter a note or turn on a highlight.");
+  const pdf = await assemble(files, plan); const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const targets = new Set(selectedIds);
+  for (const [index,page] of pdf.getPages().entries()) {
+    if (!targets.has(plan[index].id)) continue;
+    const { width, height } = page.getSize();
+    const x = Math.max(12, Math.min(width - 172, width * annotation.x / 100));
+    const y = Math.max(32, Math.min(height - 38, height * (1 - annotation.top / 100)));
+    if (annotation.highlight) page.drawRectangle({ x, y: y - 12, width: Math.min(160,width-x-12), height: 27, color: rgb(1,.83,.1), opacity: .34 });
+    if (annotation.text.trim()) {
+      const safe = annotation.text.trim().replace(/[\r\n]+/g," ");
+      let display = safe; while (display && font.widthOfTextAtSize(display, 10) > Math.min(160,width-x-14)) display = display.slice(0,-1);
+      if (display !== safe) display = display.slice(0,-3) + "...";
+      page.drawText(display, { x: x + 4, y: y + 6, font, size: 10, color: rgb(.12,.16,.27) });
+    }
+  }
+  await downloadPdf(pdf,"annotated",files,`${selectedIds.length}-pages`);
+}
+
 async function renderedPages(file: File, indices: number[], scale: number, onImage: (pageNumber: number, canvas: HTMLCanvasElement, size: {width:number;height:number}) => Promise<void>) {
   const library = await pdfjs(); const loading = library.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true }); const pdf = await loading.promise;
   try { for (const index of indices) { const page = await pdf.getPage(index + 1); const natural=page.getViewport({scale:1}); const viewport = page.getViewport({ scale }); const canvas = document.createElement("canvas"); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); const context = canvas.getContext("2d", { alpha: false }); if (!context) throw new Error("Canvas is unavailable."); await page.render({ canvas, canvasContext: context, viewport, background: "white" }).promise; await onImage(index + 1, canvas,{width:natural.width,height:natural.height}); page.cleanup(); } } finally { await loading.destroy(); }
 }
 const canvasBlob = (canvas: HTMLCanvasElement, type: string, quality?: number) => new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Could not encode the rendered page.")), type, quality));
 
-export async function exportImages(file: File, indices: number[], format: "jpeg" | "png", scale = 1.6, forceZip = false) {
-  if (!indices.length) throw new Error("Select one or more pages."); const mime = `image/${format}`; const extension = format === "jpeg" ? "jpg" : "png"; const zip = new JSZip(); let single: Blob | null = null;
-  let outputIndex = 0; await renderedPages(file, indices, scale, async (page, canvas) => { outputIndex++; const blob = await canvasBlob(canvas, mime, 0.88); if (indices.length === 1 && !forceZip) single = blob; else zip.file(outputName("page", [file], `image-${outputIndex}__source-page-${page}`, extension), await blob.arrayBuffer()); });
+export async function exportImages(file: File, indices: number[], format: "jpeg" | "png" | "webp", scale = 1.6, forceZip = false) {
+  if (!indices.length) throw new Error("Select one or more pages."); const mime = `image/${format}`; const extension = format === "jpeg" ? "jpg" : format; const zip = new JSZip(); let single: Blob | null = null;
+  let outputIndex = 0; await renderedPages(file, indices, scale, async (page, canvas) => { outputIndex++; const blob = await canvasBlob(canvas, mime, 0.88); if (blob.type !== mime) throw new Error(`${format.toUpperCase()} export is not supported by this browser.`); if (indices.length === 1 && !forceZip) single = blob; else zip.file(outputName("page", [file], `image-${outputIndex}__source-page-${page}`, extension), await blob.arrayBuffer()); });
   if (single) downloadBlob(single, outputName("page", [file], `${indices[0] + 1}`, extension)); else downloadBlob(await zip.generateAsync({ type: "blob" }), outputName("pages", [file], `${indices.length}-${extension}`, "zip"));
 }
 
@@ -111,13 +160,139 @@ async function rasterDocument(file: File, indices: number[], mode: "grayscale" |
 export async function exportRasterPdf(file: File, indices: number[], mode: "grayscale" | "invert", quality = 0.7) { await downloadPdf(await rasterDocument(file,indices,mode,quality),mode,[file],`${indices.length}-pages`); }
 export async function compressPdf(file: File, allowRaster: boolean, quality: number) { const original = new Uint8Array(await file.arrayBuffer()); const source=await PDFDocument.load(original); let best:Uint8Array<ArrayBufferLike>=original; let method="original"; const optimized=await source.save({useObjectStreams:true}); if(optimized.length<best.length){best=optimized;method="lossless rewrite";} if(allowRaster){const pages=Array.from({length:source.getPageCount()},(_,index)=>index); const raster=await rasterDocument(file,pages,"compress",quality);const candidate=await raster.save({useObjectStreams:true});if(candidate.length<best.length){best=candidate;method="image recompression";}} const buffer=new ArrayBuffer(best.length);new Uint8Array(buffer).set(best); const savings=Math.max(0,Math.round((1-best.length/original.length)*100));downloadBlob(new Blob([buffer],{type:"application/pdf"}),outputName(savings?"compressed":"optimized",[file],savings?`${savings}-percent-smaller`:"no-size-gain"));return {savings,method}; }
 
-async function readTextPages(file: File, indices?: number[]) {
+export async function readTextPages(file: File, indices?: number[]) {
   const library = await pdfjs(); const loading = library.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true }); const pdf = await loading.promise; const pages: string[] = [];
   try { for (const number of indices ?? Array.from({length:pdf.numPages},(_,index)=>index)) { const page = await pdf.getPage(number+1); const content = await page.getTextContent(); const text = content.items.map((item) => "str" in item ? item.str : "").join(" ").trim(); pages.push(text); } } finally { await loading.destroy(); }
   return pages;
 }
+export async function readTextRows(file: File, indices: number[]) {
+  const library = await pdfjs(); const loading = library.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true });
+  const pdf = await loading.promise; const pages: string[][][] = [];
+  try {
+    for (const index of indices) {
+      const page = await pdf.getPage(index + 1); const content = await page.getTextContent();
+      const cells = content.items.filter((item): item is typeof item & { str: string; transform: number[] } => "str" in item && "transform" in item && Boolean(item.str.trim())).map(item => ({ text: item.str.trim(), x: item.transform[4], y: item.transform[5] })).sort((a,b) => b.y - a.y || a.x - b.x);
+      const lines: { y: number; cells: { x: number; text: string }[] }[] = [];
+      for (const cell of cells) { let line = lines.find(row => Math.abs(row.y - cell.y) < 3); if (!line) { line = { y: cell.y, cells: [] }; lines.push(line); } line.cells.push(cell); }
+      pages.push(lines.map(line => line.cells.sort((a,b) => a.x - b.x).map(cell => cell.text)));
+    }
+  } finally { await loading.destroy(); }
+  return pages;
+}
+export async function renderPageImages(file: File, indices: number[], scale = 1.25) {
+  const images: { page: number; data: string; width: number; height: number }[] = [];
+  await renderedPages(file, indices, scale, async (page, canvas, size) => { images.push({ page, data: canvas.toDataURL("image/png"), ...size }); });
+  return images;
+}
+
+export async function extractEmbeddedImages(file: File, indices: number[]) {
+  if (!indices.length) throw new Error("Select at least one page.");
+  const library = await pdfjs(); const loading = library.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true });
+  const pdf = await loading.promise; const zip = new JSZip(); const seen = new Set<string>(); let count = 0;
+  try {
+    for (const index of indices) {
+      const page = await pdf.getPage(index + 1); const viewport = page.getViewport({ scale: .1 });
+      const scratch = document.createElement("canvas"); scratch.width = Math.ceil(viewport.width); scratch.height = Math.ceil(viewport.height);
+      const scratchContext = scratch.getContext("2d"); if (!scratchContext) throw new Error("Canvas is unavailable for image inspection.");
+      await page.render({ canvas: scratch, canvasContext: scratchContext, viewport }).promise;
+      const operations = await page.getOperatorList();
+      for (let i = 0; i < operations.fnArray.length; i++) {
+        const opcode = operations.fnArray[i];
+        if (opcode !== library.OPS.paintImageXObject && opcode !== library.OPS.paintInlineImageXObject) continue;
+        const argument = operations.argsArray[i]?.[0];
+        const identity = typeof argument === "string" ? argument : `inline-${index}-${i}`;
+        if (seen.has(identity)) continue;
+        let asset: unknown;
+        if (opcode === library.OPS.paintInlineImageXObject) asset = argument;
+        else asset = await new Promise((resolve, reject) => { const timeout = window.setTimeout(() => reject(new Error("An embedded image could not be decoded. Try PDF to PNG for this page.")), 4000); try { page.objs.get(argument as string, (value: unknown) => { window.clearTimeout(timeout); resolve(value); }); } catch (cause) { window.clearTimeout(timeout); reject(cause); } });
+        if (!asset || typeof asset !== "object") continue;
+        const source = asset as { width?: number; height?: number; data?: Uint8Array | Uint8ClampedArray; bitmap?: ImageBitmap };
+        if (!source.width || !source.height || source.width > 10000 || source.height > 10000) continue;
+        const canvas = document.createElement("canvas"); canvas.width = source.width; canvas.height = source.height;
+        const context = canvas.getContext("2d"); if (!context) throw new Error("Canvas is unavailable for image extraction.");
+        if (asset instanceof ImageBitmap) context.drawImage(asset, 0, 0);
+        else if (source.bitmap instanceof ImageBitmap) context.drawImage(source.bitmap, 0, 0);
+        else if (source.data) {
+          const rgba = context.createImageData(source.width, source.height); const raw = source.data;
+          if (raw.length === source.width * source.height * 4) rgba.data.set(raw);
+          else if (raw.length === source.width * source.height * 3) for (let p = 0, q = 0; p < raw.length; p += 3, q += 4) { rgba.data[q] = raw[p]; rgba.data[q + 1] = raw[p + 1]; rgba.data[q + 2] = raw[p + 2]; rgba.data[q + 3] = 255; }
+          else continue;
+          context.putImageData(rgba, 0, 0);
+        } else continue;
+        const blob = await canvasBlob(canvas, "image/png"); count++; seen.add(identity);
+        zip.file(outputName("embedded-image", [file], `page-${index + 1}__image-${count}`, "png"), await blob.arrayBuffer());
+      }
+      page.cleanup();
+    }
+  } finally { await loading.destroy(); }
+  if (!count) throw new Error("No supported embedded raster images were found in the selected pages. Page images are available via PDF to PNG.");
+  downloadBlob(await zip.generateAsync({ type: "blob" }), outputName("embedded-images", [file], `${count}-images`, "zip"));
+  return count;
+}
 export async function extractText(file: File, markdown = false, indices?: number[]) { const pages = await readTextPages(file,indices); const content = markdown ? pages.map((page,index)=>`## Page ${(indices?.[index]??index)+1}\n\n${page}`).join("\n\n---\n\n") : pages.join("\n\n\f\n\n"); const extension = markdown ? "md" : "txt"; downloadBlob(new Blob([content], { type: "text/plain;charset=utf-8" }), outputName(markdown ? "markdown" : "text", [file], `${pages.length}-pages`, extension)); return pages.length; }
 export async function exportHtml(file: File, indices?: number[]) { const pages=await readTextPages(file,indices); const escape=(value:string)=>value.replace(/[&<>"']/g,character=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[character]!); const sections=pages.map((page,index)=>`<section class="page" aria-label="Page ${(indices?.[index]??index)+1}"><h2>Page ${(indices?.[index]??index)+1}</h2><p>${escape(page)}</p></section>`).join("\n"); const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(file.name)}</title><style>body{font:17px/1.7 system-ui,sans-serif;max-width:760px;margin:3rem auto;padding:0 1rem;color:#111}.page{border-bottom:1px solid #ddd;padding:1rem 0 2rem}.page p{white-space:pre-wrap}</style></head><body><h1>${escape(file.name)}</h1>${sections}</body></html>`; downloadBlob(new Blob([html],{type:"text/html;charset=utf-8"}),outputName("html",[file],`${pages.length}-pages`,"html")); return pages.length; }
+
+/** Find pages with no text and nearly white pixels. The result is a suggestion, not an automatic deletion. */
+export async function findBlankPages(file: File) {
+  const library = await pdfjs();
+  const loading = library.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true });
+  const pdf = await loading.promise;
+  const blank: number[] = [];
+  try {
+    for (let index = 0; index < pdf.numPages; index++) {
+      const page = await pdf.getPage(index + 1);
+      const content = await page.getTextContent();
+      if (content.items.some(item => "str" in item && item.str.trim())) continue;
+      const viewport = page.getViewport({ scale: Math.min(.5, 300 / page.getViewport({ scale: 1 }).width) });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+      const context = canvas.getContext("2d", { willReadFrequently: true, alpha: false });
+      if (!context) throw new Error("Canvas is unavailable for blank-page detection.");
+      await page.render({ canvas, canvasContext: context, viewport, background: "white" }).promise;
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let nonwhite = 0;
+      for (let p = 0; p < pixels.length; p += 16) if (pixels[p] < 235 || pixels[p + 1] < 235 || pixels[p + 2] < 235) nonwhite++;
+      if (nonwhite / Math.ceil(pixels.length / 16) < .0005) blank.push(index);
+      page.cleanup();
+    }
+  } finally { await loading.destroy(); }
+  return blank;
+}
+
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
+export async function comparePdfs(files: File[]) {
+  if (files.length !== 2) throw new Error("Choose exactly two PDF versions to compare.");
+  const library = await pdfjs();
+  const loadings = await Promise.all(files.map(async file => library.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true })));
+  const documents = await Promise.all(loadings.map(loading => loading.promise));
+  const results: { number: number; first: string; second: string; visual: string; status: string }[] = [];
+  try {
+    for (let number = 1; number <= Math.max(...documents.map(pdf => pdf.numPages)); number++) {
+      const pages = await Promise.all(documents.map(pdf => number <= pdf.numPages ? pdf.getPage(number) : null));
+      const texts = await Promise.all(pages.map(async page => page ? (await page.getTextContent()).items.map(item => "str" in item ? item.str : "").join(" ").trim() : ""));
+      const pixels = await Promise.all(pages.map(async page => {
+        if (!page) return null;
+        const natural = page.getViewport({ scale: 1 }); const viewport = page.getViewport({ scale: Math.min(.65, 400 / natural.width) });
+        const canvas = document.createElement("canvas"); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+        const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true }); if (!context) throw new Error("Canvas comparison is unavailable.");
+        await page.render({ canvas, canvasContext: context, viewport, background: "white" }).promise;
+        return { width: canvas.width, height: canvas.height, data: context.getImageData(0, 0, canvas.width, canvas.height).data };
+      }));
+      let visual = "No matching page"; let visualChanged = true;
+      if (pixels[0] && pixels[1]) {
+        if (pixels[0].width !== pixels[1].width || pixels[0].height !== pixels[1].height) visual = "Different page dimensions";
+        else { let changed = 0; const a = pixels[0].data, b = pixels[1].data; for (let p = 0; p < a.length; p += 16) if (Math.abs(a[p] - b[p]) + Math.abs(a[p + 1] - b[p + 1]) + Math.abs(a[p + 2] - b[p + 2]) > 36) changed++; visual = `${(changed / Math.ceil(a.length / 16) * 100).toFixed(1)}% of sampled pixels changed`; visualChanged = changed > 0; }
+      }
+      const status = !pages[0] ? "Added" : !pages[1] ? "Removed" : texts[0] === texts[1] && !visualChanged ? "Same" : "Changed";
+      results.push({ number, first: texts[0], second: texts[1], visual, status });
+      pages.forEach(page => page?.cleanup());
+    }
+  } finally { await Promise.all(loadings.map(loading => loading.destroy())); }
+  const rows = results.map(row => `<article><h2>Page ${row.number} — ${row.status}</h2><p>${row.visual}</p><div><section><h3>Original text</h3><pre>${escapeHtml(row.first) || "(none)"}</pre></section><section><h3>Revised text</h3><pre>${escapeHtml(row.second) || "(none)"}</pre></section></div></article>`).join("");
+  const report = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>PDF comparison</title><style>body{font:16px/1.5 system-ui;margin:3rem auto;padding:0 1rem;max-width:1100px;color:#161616}header{border-bottom:2px solid;padding-bottom:1rem}article{border-bottom:1px solid #bbb;padding:1rem 0}article div{display:grid;grid-template-columns:1fr 1fr;gap:1rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f4f4;padding:1rem;min-height:4rem}@media(max-width:650px){article div{grid-template-columns:1fr}}</style></head><body><header><h1>PDF comparison</h1><p>${escapeHtml(files[0].name)} → ${escapeHtml(files[1].name)} · ${results.filter(row => row.status !== "Same").length} changed or unmatched pages</p><p>Visual percentages compare small raster samples; text is extracted from selectable text. Review the original files for critical decisions.</p></header>${rows}</body></html>`;
+  downloadBlob(new Blob([report], { type: "text/html;charset=utf-8" }), outputName("comparison", files, `${results.length}-pages`, "html"));
+  return { pages: results.length, changed: results.filter(row => row.status !== "Same").length };
+}
 
 async function imageBytes(file: File) { if (file.type === "image/jpeg" || file.type === "image/png") return { bytes: await file.arrayBuffer(), type: file.type }; const image = await createImageBitmap(file); const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height; canvas.getContext("2d")?.drawImage(image, 0, 0); image.close(); return { bytes: await canvasBlob(canvas, "image/png"), type: "image/png" }; }
 export async function imagesToPdf(files: File[], operation = "images") { if (!files.length) throw new Error("Choose at least one image."); const pdf = await PDFDocument.create(); for (const file of files) { const source = await imageBytes(file); const bytes = source.bytes instanceof Blob ? await source.bytes.arrayBuffer() : source.bytes; const image = source.type === "image/jpeg" ? await pdf.embedJpg(bytes) : await pdf.embedPng(bytes); const page = pdf.addPage([image.width, image.height]); page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height }); } await downloadPdf(pdf, operation, files, `${files.length}-images`); }
@@ -126,3 +301,40 @@ export async function createPdf(text: string) { if (!text.trim()) throw new Erro
 function parseCsv(value: string) { const rows: string[][] = []; let row: string[] = []; let field = ""; let quoted = false; for (let i=0;i<value.length;i++) { const char=value[i]; if (char==='"') { if (quoted&&value[i+1]==='"') { field+='"'; i++; } else quoted=!quoted; } else if (char===","&&!quoted) { row.push(field); field=""; } else if ((char==="\n"||char==="\r")&&!quoted) { if(char==="\r"&&value[i+1]==="\n")i++; row.push(field); if(row.some(cell=>cell.trim()))rows.push(row); row=[]; field=""; } else field+=char; } row.push(field); if(row.some(cell=>cell.trim()))rows.push(row); return rows; }
 export async function csvToPdf(value: string, files: File[]) { const rows=parseCsv(value); if(!rows.length)throw new Error("This CSV has no rows to export."); const columns=Math.min(10,Math.max(...rows.map(row=>row.length))); const pdf=await PDFDocument.create(); const regular=await pdf.embedFont(StandardFonts.Helvetica); const bold=await pdf.embedFont(StandardFonts.HelveticaBold); let page=pdf.addPage([595,842]); let y=790; const width=500/columns; for(const [index,row] of rows.entries()) { if(y<65) { page=pdf.addPage([595,842]);y=790; } page.drawRectangle({x:45,y:y-11,width:500,height:25,color:index===0?rgb(.88,.9,.95):index%2===0?rgb(.97,.97,.98):rgb(1,1,1),borderColor:rgb(.6,.6,.65),borderWidth:.4}); for(let column=0;column<columns;column++) { const font=index===0?bold:regular; let cell=(row[column]??"").replace(/\s+/g," ").trim(); while(cell&&font.widthOfTextAtSize(cell,9)>width-10)cell=cell.slice(0,-1); if(cell!==(row[column]??"").replace(/\s+/g," ").trim())cell=cell.slice(0,-1)+"…"; page.drawText(cell,{x:49+column*width,y:y-3,size:9,font,color:rgb(.08,.08,.1)}); if(column>0)page.drawLine({start:{x:45+column*width,y:y-11},end:{x:45+column*width,y:y+14},thickness:.4,color:rgb(.6,.6,.65)}); } y-=25; } await downloadPdf(pdf,"csv",files,`${rows.length}-rows`); }
 export async function markdownToPdf(value: string, files: File[]) { if(!value.trim())throw new Error("The Markdown file is empty."); const pdf=await PDFDocument.create(); const regular=await pdf.embedFont(StandardFonts.Helvetica); const bold=await pdf.embedFont(StandardFonts.HelveticaBold); let page=pdf.addPage([595,842]); let y=790; for(const raw of value.split(/\r?\n/)) { const heading=/^(#{1,3})\s+(.+)$/.exec(raw); const bullet=/^\s*[-*]\s+(.+)$/.exec(raw); const line=heading?heading[2]:bullet?`- ${bullet[1]}`:raw.replace(/\*\*(.*?)\*\*/g,"$1").replace(/\[(.*?)\]\(.*?\)/g,"$1"); const font=heading?bold:regular; const size=heading?[22,18,15][heading[1].length-1]:11; if(!line.trim()) {y-=10;continue;} let current=""; const wrapped:string[]=[]; for(const word of line.split(/\s+/)) {const next=current?`${current} ${word}`:word;if(current&&font.widthOfTextAtSize(next,size)>500){wrapped.push(current);current=word;}else current=next;}if(current)wrapped.push(current); for(const part of wrapped){if(y<55){page=pdf.addPage([595,842]);y=790;}page.drawText(part,{x:48,y,size,font,color:rgb(.08,.08,.1)});y-=size+7;} if(heading)y-=9; } await downloadPdf(pdf,"markdown",files,`${pdf.getPageCount()}-pages`); }
+
+/** Preserve semantic local markup only; never load external URLs or execute source scripts. */
+export function safeHtmlMarkup(value: string) {
+  if (typeof document === "undefined") return "";
+  const source = new DOMParser().parseFromString(value, "text/html");
+  const allowed = new Set(["h1","h2","h3","h4","h5","h6","p","div","span","br","hr","strong","b","em","i","u","s","ul","ol","li","blockquote","pre","code","table","thead","tbody","tfoot","tr","td","th"]);
+  const blocked = new Set(["script","style","link","iframe","object","embed","form","input","button","svg","math","video","audio","img","template"]);
+  const clean = document.createElement("div");
+  function copy(node: Node): Node {
+    if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent || "");
+    if (!(node instanceof Element)) return document.createDocumentFragment();
+    const tag = node.tagName.toLowerCase(); const fragment = document.createDocumentFragment();
+    if (blocked.has(tag)) return fragment;
+    const target = allowed.has(tag) ? document.createElement(tag) : fragment;
+    for (const child of Array.from(node.childNodes)) target.appendChild(copy(child));
+    return target;
+  }
+  for (const node of Array.from(source.body.childNodes)) clean.appendChild(copy(node));
+  return clean.innerHTML;
+}
+
+export async function htmlToPdf(value: string, files: File[]) {
+  const markup = safeHtmlMarkup(value);
+  const plain = new DOMParser().parseFromString(markup, "text/html").body.textContent?.trim();
+  if (!plain) throw new Error("This HTML file has no supported text content. Images, scripts, CSS and external assets are intentionally excluded.");
+  const frame = document.createElement("div");
+  frame.style.cssText = "position:fixed;left:-200vw;top:0;width:760px;padding:38px;background:#fff;color:#161616;font:16px/1.55 Arial,sans-serif;z-index:-1";
+  frame.innerHTML = `<style>h1,h2,h3{line-height:1.2;margin:1em 0 .4em}p,li{margin:.4em 0}table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:6px}pre{white-space:pre-wrap;overflow-wrap:anywhere}blockquote{border-left:3px solid #555;padding-left:12px}</style>${markup}`;
+  document.body.appendChild(frame);
+  try {
+    const pdf = new jsPDF({ unit: "pt", format: "a4", compress: true });
+    await pdf.html(frame, { x: 32, y: 32, width: 530, windowWidth: 836, autoPaging: "text", margin: [32, 32, 32, 32] });
+    const count = pdf.getNumberOfPages();
+    downloadBlob(pdf.output("blob"), outputName("html", files, `${count}-pages`));
+    return count;
+  } finally { frame.remove(); }
+}
