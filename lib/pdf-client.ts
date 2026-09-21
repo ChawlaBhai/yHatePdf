@@ -2,13 +2,15 @@
 
 import JSZip from "jszip";
 import { jsPDF } from "jspdf";
-import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import { PDFDocument, PDFImage, StandardFonts, rgb, degrees } from "pdf-lib";
 
 export type PagePlanItem = { id: string; fileIndex: number; pageIndex: number; rotation: number };
 export type PdfPageInfo = { fileIndex: number; pageIndex: number; thumbnail: string; width: number; height: number };
+export type PlacedSignature = { id: string; pageId: string; image: string; label: string; x: number; top: number; width: number; rotation: number; opacity: number };
 export type ExportOptions = { text?: string; secondaryText?: string; position?: "top" | "bottom"; margin?: number; paper?: "A4" | "Letter" | "A5"; opacity?: number; quality?: number; selectedIds?: string[] };
 
 const stem = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 52) || "document";
+const clampNumber = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
 export const outputName = (operation: string, files: File[], detail = "", extension = "pdf") => `yhatepdf_${operation}__${files.slice(0, 2).map((file) => stem(file.name)).join("-") || "document"}${detail ? `__${detail}` : ""}.${extension}`;
 export function downloadBlob(blob: Blob, name: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 5000); }
 const downloadPdf = async (pdf: PDFDocument, operation: string, files: File[], detail = "") => { const bytes = await pdf.save(); const buffer = new ArrayBuffer(bytes.length); new Uint8Array(buffer).set(bytes); downloadBlob(new Blob([buffer], { type: "application/pdf" }), outputName(operation, files, detail)); };
@@ -121,6 +123,26 @@ export async function exportSignature(files: File[], plan: PagePlanItem[], selec
   await downloadPdf(pdf, "visually-signed", files, `${selectedIds.length}-pages`);
 }
 
+export async function exportPlacedSignatures(files: File[], plan: PagePlanItem[], placements: PlacedSignature[]) {
+  if (!placements.length) throw new Error("Place at least one signature on a page before exporting.");
+  const pdf = await assemble(files, plan);
+  const imageCache = new Map<string, PDFImage>();
+  for (const placement of placements) {
+    const pageIndex = plan.findIndex((item) => item.id === placement.pageId);
+    if (pageIndex < 0) continue;
+    const page = pdf.getPage(pageIndex);
+    let image = imageCache.get(placement.image);
+    if (!image) { image = await pdf.embedPng(placement.image); imageCache.set(placement.image, image); }
+    const { width: pageWidth, height: pageHeight } = page.getSize();
+    const width = Math.max(24, pageWidth * placement.width / 100);
+    const height = width * image.height / image.width;
+    const x = Math.max(0, Math.min(pageWidth - width, pageWidth * placement.x / 100));
+    const y = Math.max(0, Math.min(pageHeight - height, pageHeight - pageHeight * placement.top / 100 - height));
+    page.drawImage(image, { x, y, width, height, rotate: degrees(placement.rotation), opacity: placement.opacity });
+  }
+  await downloadPdf(pdf, "signed", files, `${placements.length}-signatures__${new Set(placements.map((item) => item.pageId)).size}-pages`);
+}
+
 export async function exportAnnotation(files: File[], plan: PagePlanItem[], selectedIds: string[], annotation: { text: string; x: number; top: number; highlight: boolean }) {
   if (!selectedIds.length) throw new Error("Select at least one page to annotate.");
   if (!annotation.text.trim() && !annotation.highlight) throw new Error("Enter a note or turn on a highlight.");
@@ -146,7 +168,7 @@ export type StudioAction =
   | { id: string; type: "watermark"; targetIds: string[]; text: string }
   | { id: string; type: "page-numbers"; targetIds: string[]; position: "top" | "bottom" }
   | { id: string; type: "header-footer"; targetIds: string[]; text: string; secondaryText: string }
-  | { id: string; type: "signature"; targetIds: string[]; text: string; image?: string; position: "bottom-left" | "bottom-right" | "top-left" | "top-right" }
+  | { id: string; type: "signature"; targetIds: string[]; text: string; image?: string; position?: "bottom-left" | "bottom-right" | "top-left" | "top-right"; x?: number; top?: number; width?: number; rotation?: number; opacity?: number }
   | { id: string; type: "annotation"; targetIds: string[]; text: string; x: number; top: number; highlight: boolean }
   | { id: string; type: "crop"; targetIds: string[]; margin: number }
   | { id: string; type: "remove-metadata"; targetIds: string[] };
@@ -186,14 +208,18 @@ export async function exportStudioPdf(files: File[], plan: PagePlanItem[], actio
       }
       if (action.type === "signature") {
         if (signatureImage) {
-          const scale = Math.min(180 / signatureImage.width, 70 / signatureImage.height);
-          const w = signatureImage.width * scale, h = signatureImage.height * scale;
-          page.drawImage(signatureImage, { x: action.position.endsWith("right") ? width - w - 28 : 28, y: action.position.startsWith("top") ? height - h - 28 : 28, width: w, height: h });
+          const w = action.width ? width * action.width / 100 : Math.min(180, width - 48);
+          const h = w * signatureImage.height / signatureImage.width;
+          const x = action.x === undefined ? action.position?.endsWith("right") ? width - w - 28 : 28 : clampNumber(width * action.x / 100, 0, width - w);
+          const y = action.top === undefined ? action.position?.startsWith("top") ? height - h - 28 : 28 : clampNumber(height - height * action.top / 100 - h, 0, height - h);
+          page.drawImage(signatureImage, { x, y, width: w, height: h, rotate: degrees(action.rotation ?? 0), opacity: action.opacity ?? 1 });
         } else if (action.text.trim()) {
           const text = action.text.trim();
           let size = 30; while (size > 12 && italic.widthOfTextAtSize(text, size) > 180) size -= 1;
           const textWidth = italic.widthOfTextAtSize(text, size);
-          page.drawText(text, { x: action.position.endsWith("right") ? width - textWidth - 28 : 28, y: action.position.startsWith("top") ? height - size - 28 : 28, size, font: italic, color: rgb(.08,.16,.34) });
+          const x = action.x === undefined ? action.position?.endsWith("right") ? width - textWidth - 28 : 28 : clampNumber(width * action.x / 100, 0, width - textWidth);
+          const y = action.top === undefined ? action.position?.startsWith("top") ? height - size - 28 : 28 : clampNumber(height - height * action.top / 100 - size, 0, height - size);
+          page.drawText(text, { x, y, size, font: italic, color: rgb(.08,.16,.34), rotate: degrees(action.rotation ?? 0), opacity: action.opacity ?? 1 });
         }
       }
       if (action.type === "annotation") {

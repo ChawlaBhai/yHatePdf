@@ -14,5 +14,4 @@ The extension requests only `contextMenus` and `storage`. It does not request br
 
 ## Chrome Web Store upload
 
-Upload the generated `yhatepdf-chrome-extension-v1.0.0.zip`. The archive has `manifest.json` at its root, as required by Chrome Web Store. Increment the manifest version before each update.
-
+Upload the generated `yhatepdf-chrome-extension-v1.1.0.zip`. The archive has `manifest.json` at its root, as required by Chrome Web Store. Increment the manifest version before each update.

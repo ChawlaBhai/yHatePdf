@@ -24,7 +24,7 @@ const metadata: Record<ToolCategory, { icon: LucideIcon; accept: string; output:
   create: { icon: FilePlus2, accept: pdf, output: "PDF", engine: "pdf-lib" },
   utility: { icon: Settings2, accept: pdf, output: "PDF", engine: "PDF.js" },
 };
-const ready = new Set(["merge", "split", "rotate", "organize", "delete-pages", "extract-pages", "reverse-pages", "duplicate-pages", "odd-pages", "even-pages", "crop", "resize", "compress", "page-numbers", "watermark", "headers-footers", "metadata", "remove-metadata", "images-to-pdf", "scan-to-pdf", "pdf-to-text", "pdf-to-markdown", "pdf-to-html", "pdf-to-jpg", "pdf-to-png", "pdf-to-webp", "pdf-to-zip", "create-pdf", "markdown-to-pdf", "csv-to-pdf", "grayscale", "invert", "flatten", "compare", "remove-blank-pages", "sign", "html-to-pdf", "pdf-to-word", "word-to-pdf", "pdf-to-excel", "excel-to-pdf", "pdf-to-powerpoint", "studio", "annotate", "extract-images"]);
+const ready = new Set(["merge", "split", "rotate", "organize", "delete-pages", "extract-pages", "reverse-pages", "duplicate-pages", "odd-pages", "even-pages", "crop", "resize", "compress", "page-numbers", "watermark", "headers-footers", "metadata", "remove-metadata", "images-to-pdf", "scan-to-pdf", "pdf-to-text", "pdf-to-markdown", "pdf-to-html", "pdf-to-jpg", "pdf-to-png", "pdf-to-webp", "pdf-to-zip", "create-pdf", "markdown-to-pdf", "csv-to-pdf", "grayscale", "invert", "flatten", "compare", "remove-blank-pages", "sign", "edit-pdf", "html-to-pdf", "pdf-to-word", "word-to-pdf", "pdf-to-excel", "excel-to-pdf", "pdf-to-powerpoint", "studio", "annotate", "extract-images"]);
 const make = (id: string, name: string, description: string, category: ToolCategory, keywords: string[], icon?: LucideIcon, accept?: string, output?: string): Tool => ({ id, name, description, category, keywords, icon: icon ?? metadata[category].icon, accept: accept ?? metadata[category].accept, output: output ?? metadata[category].output, engine: ["csv-to-pdf","markdown-to-pdf","create-pdf"].includes(id) ? "pdf-lib + browser File API" : ["images-to-pdf","scan-to-pdf"].includes(id) ? "pdf-lib + Canvas" : ["pdf-to-word","word-to-pdf","excel-to-pdf","pdf-to-excel","pdf-to-powerpoint"].includes(id) ? "local Office conversion" : id === "html-to-pdf" ? "jsPDF + Canvas" : metadata[category].engine, status: ready.has(id) ? "ready" : "research", route: `/tools/${id}`, mobile: true, offline: true });
 
 export const tools: Tool[] = [
@@ -63,9 +63,9 @@ export const tools: Tool[] = [
   make("page-numbers", "Add page numbers", "Number pages at the top or bottom.", "edit", ["number", "pagination"], Type),
   make("watermark", "Watermark PDF", "Add a text watermark to selected pages.", "edit", ["stamp", "brand", "draft"], Stamp),
   make("headers-footers", "Headers and footers", "Add repeating text to PDF pages.", "edit", ["heading", "footer"], Type),
-  make("sign", "Sign PDF", "Place a typed or drawn visual signature on selected pages (not a digital certificate).", "edit", ["signature", "autograph"], PenLine),
+  make("sign", "Sign PDF", "Type, draw, or import a signature; clean its background, then drag and resize it anywhere.", "edit", ["signature", "autograph", "image", "background removal"], PenLine),
   make("annotate", "Annotate PDF", "Place a text note and/or translucent highlight on selected pages.", "edit", ["highlight", "draw", "markup"], PenLine),
-  make("edit-pdf", "Edit PDF", "Work with existing content and new objects.", "edit", ["change text", "editor"], PenLine),
+  make("edit-pdf", "Edit PDF", "Open PDF Studio to organize pages and stack text, signature, crop, numbering, and annotation actions.", "edit", ["change text", "editor", "studio", "objects"], PenLine),
   make("flatten", "Flatten PDF", "Flatten form fields into the pages.", "edit", ["forms", "lock layout"], Layers3),
   make("grayscale", "Grayscale PDF", "Convert pages to grayscale images.", "edit", ["black and white", "monochrome"], FileImage),
   make("invert", "Invert PDF", "Invert page colours for dark reading.", "edit", ["dark", "night"], FileImage),

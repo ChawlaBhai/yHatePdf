@@ -1,8 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <rect width="128" height="128" fill="#09090b"/>
   <rect x="5" y="5" width="118" height="118" fill="none" stroke="#f8f8f9" stroke-width="4"/>
-  <text x="64" y="48" text-anchor="middle" fill="#fff" font-family="monospace" font-size="31" font-weight="700">Y</text>
-  <path fill="#e4e4e7" d="M39 57h12v-7h13v7h13v-7h12v7h7v14h-7v7h-7v7h-7v7H64v-7H53v-7h-7v-7h-7z"/>
-  <path fill="#71717a" d="M46 57h12v7h6v14h-6v-7H46z"/>
-  <text x="64" y="114" text-anchor="middle" fill="#ff725f" font-family="monospace" font-size="22" font-weight="700">PDF?</text>
+  <text x="64" y="33" text-anchor="middle" fill="#fff" font-family="monospace" font-size="22" font-weight="700">WHY</text>
+  <path fill="#f4f4f5" d="M38 41h39l14 14v46H38z"/>
+  <path fill="#a1a1aa" d="M77 41v14h14z"/>
+  <path fill="#09090b" d="M46 64h13v6H46zm25 0h13v6H71zM54 88h20v7H54z"/>
+  <path fill="#ff5b45" d="M56 52h14v7h-7v8h-7v8h-8v10H38V70h10V60h8z"/>
+  <text x="64" y="118" text-anchor="middle" fill="#fff" font-family="monospace" font-size="17" font-weight="700">PDF?</text>
 </svg>

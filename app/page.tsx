@@ -3,10 +3,10 @@ import { ArrowUpRight, Files, Fingerprint, LayoutGrid, MousePointer2, ShieldChec
 import { categories, tools, type ToolCategory } from "@/lib/tool-registry";
 
 const features = [
-  { title: "Every page, your call", copy: "See real page previews. Reorder, remove, rotate, and select before you export.", icon: LayoutGrid },
+  { title: "Every page, your call", copy: "See real previews. Reorder, remove, rotate, sign, and place objects before export.", icon: LayoutGrid },
   { title: "Local by design", copy: "Your documents are processed in your browser, not uploaded to a server.", icon: Fingerprint },
   { title: "No account. No watermark.", copy: "Open a tool and get the file you need without the familiar PDF-tool runaround.", icon: Sparkles },
-  { title: "Useful names", copy: "Outputs identify the action, source document, and page count so they stay findable.", icon: Files },
+  { title: "Precision, not presets", copy: "Drag and resize signatures and edits where the document actually needs them.", icon: Files },
 ];
 const order: ToolCategory[] = ["organize", "convert", "edit", "create", "security", "utility"];
 
