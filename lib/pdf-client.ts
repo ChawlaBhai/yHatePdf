@@ -142,6 +142,76 @@ export async function exportAnnotation(files: File[], plan: PagePlanItem[], sele
   await downloadPdf(pdf,"annotated",files,`${selectedIds.length}-pages`);
 }
 
+export type StudioAction =
+  | { id: string; type: "watermark"; targetIds: string[]; text: string }
+  | { id: string; type: "page-numbers"; targetIds: string[]; position: "top" | "bottom" }
+  | { id: string; type: "header-footer"; targetIds: string[]; text: string; secondaryText: string }
+  | { id: string; type: "signature"; targetIds: string[]; text: string; image?: string; position: "bottom-left" | "bottom-right" | "top-left" | "top-right" }
+  | { id: string; type: "annotation"; targetIds: string[]; text: string; x: number; top: number; highlight: boolean }
+  | { id: string; type: "crop"; targetIds: string[]; margin: number }
+  | { id: string; type: "remove-metadata"; targetIds: string[] };
+
+export async function exportStudioPdf(files: File[], plan: PagePlanItem[], actions: StudioAction[]) {
+  if (!plan.length) throw new Error("Keep at least one page on the studio canvas.");
+  const pdf = await assemble(files, plan);
+  const pages = pdf.getPages();
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const italic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
+
+  for (const action of actions) {
+    const targets = new Set(action.targetIds.length ? action.targetIds : plan.map((item) => item.id));
+    if (action.type === "remove-metadata") {
+      pdf.setTitle(""); pdf.setAuthor(""); pdf.setSubject(""); pdf.setKeywords([]); pdf.setCreator(""); pdf.setProducer("");
+      continue;
+    }
+    let signatureImage = action.type === "signature" && action.image ? await pdf.embedPng(action.image) : null;
+    for (const [index, page] of pages.entries()) {
+      if (!targets.has(plan[index].id)) continue;
+      const { width, height } = page.getSize();
+      if (action.type === "watermark") {
+        const text = action.text.trim();
+        if (!text) continue;
+        let size = 34;
+        while (size > 16 && regular.widthOfTextAtSize(text, size) > width - 70) size -= 1;
+        const x = Math.max(24, (width - regular.widthOfTextAtSize(text, size)) / 2);
+        page.drawText(text, { x, y: height / 2, size, font: regular, color: rgb(.22,.22,.24), opacity: .28, rotate: degrees(35) });
+      }
+      if (action.type === "page-numbers") {
+        const text = `${index + 1} / ${pages.length}`;
+        page.drawText(text, { x: (width - regular.widthOfTextAtSize(text, 10)) / 2, y: action.position === "top" ? height - 25 : 18, size: 10, font: regular, color: rgb(.2,.2,.22) });
+      }
+      if (action.type === "header-footer") {
+        if (action.text.trim()) page.drawText(action.text.trim().slice(0, 100), { x: 24, y: height - 25, size: 9, font: regular, color: rgb(.25,.25,.28) });
+        if (action.secondaryText.trim()) page.drawText(action.secondaryText.trim().slice(0, 100), { x: 24, y: 18, size: 9, font: regular, color: rgb(.25,.25,.28) });
+      }
+      if (action.type === "signature") {
+        if (signatureImage) {
+          const scale = Math.min(180 / signatureImage.width, 70 / signatureImage.height);
+          const w = signatureImage.width * scale, h = signatureImage.height * scale;
+          page.drawImage(signatureImage, { x: action.position.endsWith("right") ? width - w - 28 : 28, y: action.position.startsWith("top") ? height - h - 28 : 28, width: w, height: h });
+        } else if (action.text.trim()) {
+          const text = action.text.trim();
+          let size = 30; while (size > 12 && italic.widthOfTextAtSize(text, size) > 180) size -= 1;
+          const textWidth = italic.widthOfTextAtSize(text, size);
+          page.drawText(text, { x: action.position.endsWith("right") ? width - textWidth - 28 : 28, y: action.position.startsWith("top") ? height - size - 28 : 28, size, font: italic, color: rgb(.08,.16,.34) });
+        }
+      }
+      if (action.type === "annotation") {
+        const x = Math.max(12, Math.min(width - 172, width * action.x / 100));
+        const y = Math.max(32, Math.min(height - 38, height * (1 - action.top / 100)));
+        if (action.highlight) page.drawRectangle({ x, y: y - 12, width: Math.min(160,width-x-12), height: 27, color: rgb(1,.83,.1), opacity: .34 });
+        if (action.text.trim()) page.drawText(action.text.trim().replace(/[\r\n]+/g," ").slice(0,72), { x:x+4, y:y+6, size:10, font:regular, color:rgb(.12,.16,.27) });
+      }
+      if (action.type === "crop") {
+        const margin = Math.max(0, action.margin);
+        if (margin * 2 >= Math.min(width, height)) throw new Error("One crop action is larger than the target page.");
+        page.setCropBox(margin, margin, width - margin * 2, height - margin * 2);
+      }
+    }
+  }
+  await downloadPdf(pdf, "studio", files, `${plan.length}-pages__${actions.length}-actions`);
+}
+
 async function renderedPages(file: File, indices: number[], scale: number, onImage: (pageNumber: number, canvas: HTMLCanvasElement, size: {width:number;height:number}) => Promise<void>) {
   const library = await pdfjs(); const loading = library.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true }); const pdf = await loading.promise;
   try { for (const index of indices) { const page = await pdf.getPage(index + 1); const natural=page.getViewport({scale:1}); const viewport = page.getViewport({ scale }); const canvas = document.createElement("canvas"); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); const context = canvas.getContext("2d", { alpha: false }); if (!context) throw new Error("Canvas is unavailable."); await page.render({ canvas, canvasContext: context, viewport, background: "white" }).promise; await onImage(index + 1, canvas,{width:natural.width,height:natural.height}); page.cleanup(); } } finally { await loading.destroy(); }

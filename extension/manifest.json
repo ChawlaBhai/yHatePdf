@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "yHatePDF — Quick PDF Tools",
+  "version": "1.0.0",
+  "description": "Open private PDF tools and PDF Studio instantly from your Chrome toolbar.",
+  "permissions": ["contextMenus", "storage"],
+  "action": {
+    "default_title": "Open yHatePDF quick tools",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "open-pdf-studio": {
+      "suggested_key": {
+        "default": "Alt+Shift+Y",
+        "mac": "Alt+Shift+Y"
+      },
+      "description": "Open yHatePDF PDF Studio"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
+

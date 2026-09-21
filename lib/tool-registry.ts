@@ -79,7 +79,7 @@ export const tools: Tool[] = [
   make("repair", "Repair PDF", "Recover pages from a damaged document.", "utility", ["fix", "broken"], Settings2),
   make("extract-images", "Extract images", "Save supported embedded raster images from selected pages as a ZIP.", "utility", ["pictures", "photos"], FileImage, pdf, "PNG ZIP"),
   make("remove-blank-pages", "Remove blank pages", "Find likely white pages, review them, then remove selected pages.", "utility", ["empty", "clean"], Scissors),
-  make("studio", "PDF Studio", "Mix files, edit the visual page plan, and choose an export action in one workspace.", "utility", ["edit", "viewer", "workspace"], Grid2X2),
+  make("studio", "PDF Studio", "View whole PDFs, mix pages, stack edits and signatures, then export once.", "utility", ["edit", "viewer", "workspace", "sign", "annotate"], Grid2X2),
 ];
 
 export const toolById = (id: string) => tools.find((tool) => tool.id === id);
