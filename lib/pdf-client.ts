@@ -12,6 +12,10 @@ export type ExportOptions = { text?: string; secondaryText?: string; position?: 
 
 const stem = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 52) || "document";
 const clampNumber = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
+// PDF-lib refuses any encrypted file by default, even where the browser can
+// safely inspect its pages. This does not crack a password or defeat access
+// controls; password-protected documents still need Unlock PDF first.
+const loadPdf = (input: ArrayBuffer | Uint8Array) => PDFDocument.load(input, { ignoreEncryption: true });
 export const outputName = (operation: string, files: File[], detail = "", extension = "pdf") => `yhatepdf_${operation}__${files.slice(0, 2).map((file) => stem(file.name)).join("-") || "document"}${detail ? `__${detail}` : ""}.${extension}`;
 export function downloadBlob(blob: Blob, name: string, sourceDocuments = 1) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove(); recordProcessedDocument(sourceDocuments); window.setTimeout(() => URL.revokeObjectURL(url), 5000); }
 const downloadPdf = async (pdf: PDFDocument, operation: string, files: File[], detail = "") => { const bytes = await pdf.save(); const buffer = new ArrayBuffer(bytes.length); new Uint8Array(buffer).set(bytes); downloadBlob(new Blob([buffer], { type: "application/pdf" }), outputName(operation, files, detail), Math.max(1, files.length)); };
@@ -25,7 +29,7 @@ async function pdfjs() {
 export async function appendPagePlan(files: File[], startIndex = 0): Promise<PagePlanItem[]> {
   const additions: PagePlanItem[] = [];
   for (let fileIndex = startIndex; fileIndex < files.length; fileIndex += 1) {
-    const document = await PDFDocument.load(await files[fileIndex].arrayBuffer());
+    const document = await loadPdf(await files[fileIndex].arrayBuffer());
     for (let pageIndex = 0; pageIndex < document.getPageCount(); pageIndex += 1) additions.push({ id: crypto.randomUUID(), fileIndex, pageIndex, rotation: 0 });
   }
   return additions;
@@ -58,7 +62,7 @@ export async function renderFullPreview(file: File, pageIndex: number) {
   try { const pdf = await loading.promise; const page = await pdf.getPage(pageIndex + 1); const natural = page.getViewport({ scale: 1 }); const viewport = page.getViewport({ scale: Math.min(2, 760 / natural.width) }); const canvas = document.createElement("canvas"); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); const context = canvas.getContext("2d", { alpha: false }); if (!context) throw new Error("Canvas preview is unavailable."); await page.render({canvas,canvasContext:context,viewport,background:"white"}).promise; return canvas.toDataURL("image/png"); } finally { await loading.destroy(); }
 }
 
-const sourcesFor = (files: File[]) => Promise.all(files.map(async (file) => PDFDocument.load(await file.arrayBuffer())));
+const sourcesFor = (files: File[]) => Promise.all(files.map(async (file) => loadPdf(await file.arrayBuffer())));
 async function assemble(files: File[], plan: PagePlanItem[], flatten = false) {
   if (!plan.length) throw new Error("Select at least one page before exporting.");
   const sources = await sourcesFor(files);
@@ -85,7 +89,7 @@ export async function exportSplit(files: File[], plan: PagePlanItem[], separate:
 
 export async function exportAdjusted(files: File[], plan: PagePlanItem[], operation: string, options: ExportOptions) {
   if (operation === "flatten") { const pdf = await assemble(files, plan, true); return downloadPdf(pdf, "flattened", files); }
-  if (operation === "metadata") { const pdf = await PDFDocument.load(await files[0].arrayBuffer()); return ["Title", pdf.getTitle() || "—", "Author", pdf.getAuthor() || "—", "Subject", pdf.getSubject() || "—", "Creator", pdf.getCreator() || "—", "Pages", String(pdf.getPageCount())].reduce<Record<string, string>>((result, entry, index, array) => { if (index % 2 === 0) result[entry] = array[index + 1]; return result; }, {}); }
+  if (operation === "metadata") { const pdf = await loadPdf(await files[0].arrayBuffer()); return ["Title", pdf.getTitle() || "—", "Author", pdf.getAuthor() || "—", "Subject", pdf.getSubject() || "—", "Creator", pdf.getCreator() || "—", "Pages", String(pdf.getPageCount())].reduce<Record<string, string>>((result, entry, index, array) => { if (index % 2 === 0) result[entry] = array[index + 1]; return result; }, {}); }
   const pdf = await assemble(files, plan); const pages = pdf.getPages(); const targets = new Set(options.selectedIds ?? plan.map(item => item.id));
   if (operation === "remove-metadata") { pdf.setTitle(""); pdf.setAuthor(""); pdf.setSubject(""); pdf.setKeywords([]); pdf.setCreator(""); pdf.setProducer(""); pdf.setCreationDate(new Date(0)); pdf.setModificationDate(new Date(0)); }
   if (["page-numbers", "watermark", "headers-footers"].includes(operation)) {
@@ -368,7 +372,7 @@ export async function ocrPdf(file:File,indices:number[],onProgress?:(message:str
   const worker=await createWorker("eng",OEM.LSTM_ONLY,{langPath:"/tesseract",gzip:true,logger:message=>onProgress?.(`${message.status} ${Math.round((message.progress||0)*100)}%`)});
   const recognized:string[]=[];
   try{for(const [position,image] of images.entries()){onProgress?.(`Recognizing page ${position+1} of ${images.length}…`);const result=await worker.recognize(image.data);recognized.push(result.data.text||"");}}finally{await worker.terminate();}
-  const pdf=await PDFDocument.load(await file.arrayBuffer());const font=await pdf.embedFont(StandardFonts.Helvetica);
+  const pdf=await loadPdf(await file.arrayBuffer());const font=await pdf.embedFont(StandardFonts.Helvetica);
   for(const [position,pageIndex] of indices.entries()){
     const page=pdf.getPage(pageIndex),{width,height}=page.getSize();
     const safe=recognized[position].replace(/[^\x20-\x7E\n]/g,"?").split(/\n+/).map(line=>line.trim()).filter(Boolean);
@@ -412,7 +416,7 @@ async function rasterDocument(file: File, indices: number[], mode: "grayscale" |
   const pdf = await PDFDocument.create(); await renderedPages(file, indices, mode === "compress" ? 1.15 : 1.5, async (_page, canvas, size) => { const context = canvas.getContext("2d"); if (!context) throw new Error("Canvas is unavailable."); if (mode !== "compress") { const data = context.getImageData(0, 0, canvas.width, canvas.height); for (let i = 0; i < data.data.length; i += 4) { const value = mode === "grayscale" ? Math.round(data.data[i] * .299 + data.data[i + 1] * .587 + data.data[i + 2] * .114) : 255 - data.data[i]; data.data[i] = value; data.data[i + 1] = mode === "grayscale" ? value : 255 - data.data[i + 1]; data.data[i + 2] = mode === "grayscale" ? value : 255 - data.data[i + 2]; } context.putImageData(data, 0, 0); } const image = await pdf.embedJpg(await (await canvasBlob(canvas, "image/jpeg", quality)).arrayBuffer()); const outputPage = pdf.addPage([size.width, size.height]); outputPage.drawImage(image, { x: 0, y: 0, width: size.width, height: size.height }); }); return pdf;
 }
 export async function exportRasterPdf(file: File, indices: number[], mode: "grayscale" | "invert", quality = 0.7) { await downloadPdf(await rasterDocument(file,indices,mode,quality),mode,[file],`${indices.length}-pages`); }
-export async function compressPdf(file: File, allowRaster: boolean, quality: number) { const original = new Uint8Array(await file.arrayBuffer()); const source=await PDFDocument.load(original); let best:Uint8Array<ArrayBufferLike>=original; let method="original"; const optimized=await source.save({useObjectStreams:true}); if(optimized.length<best.length){best=optimized;method="lossless rewrite";} if(allowRaster){const pages=Array.from({length:source.getPageCount()},(_,index)=>index); const raster=await rasterDocument(file,pages,"compress",quality);const candidate=await raster.save({useObjectStreams:true});if(candidate.length<best.length){best=candidate;method="image recompression";}} const buffer=new ArrayBuffer(best.length);new Uint8Array(buffer).set(best); const savings=Math.max(0,Math.round((1-best.length/original.length)*100));downloadBlob(new Blob([buffer],{type:"application/pdf"}),outputName(savings?"compressed":"optimized",[file],savings?`${savings}-percent-smaller`:"no-size-gain"));return {savings,method}; }
+export async function compressPdf(file: File, allowRaster: boolean, quality: number) { const original = new Uint8Array(await file.arrayBuffer()); const source=await loadPdf(original); let best:Uint8Array<ArrayBufferLike>=original; let method="original"; const optimized=await source.save({useObjectStreams:true}); if(optimized.length<best.length){best=optimized;method="lossless rewrite";} if(allowRaster){const pages=Array.from({length:source.getPageCount()},(_,index)=>index); const raster=await rasterDocument(file,pages,"compress",quality);const candidate=await raster.save({useObjectStreams:true});if(candidate.length<best.length){best=candidate;method="image recompression";}} const buffer=new ArrayBuffer(best.length);new Uint8Array(buffer).set(best); const savings=Math.max(0,Math.round((1-best.length/original.length)*100));downloadBlob(new Blob([buffer],{type:"application/pdf"}),outputName(savings?"compressed":"optimized",[file],savings?`${savings}-percent-smaller`:"no-size-gain"));return {savings,method}; }
 
 export async function readTextPages(file: File, indices?: number[]) {
   const library = await pdfjs(); const loading = library.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true }); const pdf = await loading.promise; const pages: string[] = [];
