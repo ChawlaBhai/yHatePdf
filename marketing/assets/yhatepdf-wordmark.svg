@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="WHY HATE PDF?">
+  <rect width="1200" height="360" fill="#070708"/>
+  <rect x="24" y="24" width="1152" height="312" fill="none" stroke="#f7f7f7" stroke-width="8"/>
+  <text x="90" y="222" fill="#fff" font-family="Arial Black, Arial, sans-serif" font-size="132" font-weight="900">WHY</text>
+  <g transform="translate(385 96) skewX(-7)">
+    <text x="0" y="126" fill="#f7f7f7" stroke="#8b8b92" stroke-width="5" paint-order="stroke" font-family="Impact, Arial Black, sans-serif" font-size="150" font-weight="900">HATE</text>
+    <path d="M43 9l-16 48 27-12-20 88M116 8l-19 50 28-12-21 91M188 10l-17 47 27-12-21 87M257 15l-18 40 25-10-18 74" fill="none" stroke="#080808" stroke-width="8"/>
+  </g>
+  <text x="875" y="222" fill="#fff" font-family="Arial Black, Arial, sans-serif" font-size="132" font-weight="900">PDF?</text>
+</svg>
