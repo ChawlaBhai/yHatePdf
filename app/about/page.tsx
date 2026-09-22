@@ -7,11 +7,11 @@ import BrandMark from "@/components/BrandMark";
 export const metadata: Metadata = { title: "About Us", description: "Meet the people and principles behind yHatePDF's private, practical PDF toolkit.", alternates: { canonical: "/about" } };
 
 const team = [
-  { name:"Shiro", role:"Founder & CEO", tag:"THE VISIONARY", image:"/team/shiro.png", url:"https://www.linkedin.com/in/shiro-ilovemd/?utm_source=yhatepdf.online", className:"orange" },
-  { name:"Antigravity", role:"CTO", tag:"CORE ARCHITECT", image:"/team/antigravity.png", url:"https://antigravity.google/?utm_source=yhatepdf.online", className:"blue" },
-  { name:"Claude", role:"CMO", tag:"STRATEGY", image:"/team/claude.jpg", url:"https://claude.com/product/claude-code?utm_source=yhatepdf.online", className:"amber" },
-  { name:"ChatGPT", role:"COO", tag:"OPERATIONS", image:"/team/chatgpt.jpeg", url:"https://openai.com/codex/?utm_source=yhatepdf.online", className:"green" },
-  { name:"Sahaj", role:"Cleaner & Dishwasher", tag:"TIME-PASS", image:"/team/sahaj.jpeg", url:"https://www.linkedin.com/in/13sahajchawla/?utm_source=yhatepdf.online", className:"purple" },
+  { name:"Shiro", role:"Founder & CEO", tag:"THE VISIONARY", image:"/team/shiro.png", url:"https://www.linkedin.com/in/shiro-ilovemd/?utm_source=yhatepdf.site", className:"orange" },
+  { name:"Antigravity", role:"CTO", tag:"CORE ARCHITECT", image:"/team/antigravity.png", url:"https://antigravity.google/?utm_source=yhatepdf.site", className:"blue" },
+  { name:"Claude", role:"CMO", tag:"STRATEGY", image:"/team/claude.jpg", url:"https://claude.com/product/claude-code?utm_source=yhatepdf.site", className:"amber" },
+  { name:"ChatGPT", role:"COO", tag:"OPERATIONS", image:"/team/chatgpt.jpeg", url:"https://openai.com/codex/?utm_source=yhatepdf.site", className:"green" },
+  { name:"Sahaj", role:"Cleaner & Dishwasher", tag:"TIME-PASS", image:"/team/sahaj.jpeg", url:"https://www.linkedin.com/in/13sahajchawla/?utm_source=yhatepdf.site", className:"purple" },
 ];
 
 export default function AboutPage() {

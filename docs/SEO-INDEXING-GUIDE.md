@@ -7,17 +7,17 @@ The website now ships a crawlable sitemap, robots rules, canonical URLs, tool-pa
 In **Vercel → yHatePDF → Settings → Environment Variables**, add this for Production, Preview, and Development:
 
 ```text
-NEXT_PUBLIC_SITE_URL=https://yhatepdf.online
+NEXT_PUBLIC_SITE_URL=https://yhatepdf.site
 ```
 
 If a custom domain is attached later, replace that value with its canonical HTTPS URL and redeploy. This keeps sitemap, canonical, Open Graph, and robots URLs aligned.
 
 ## 2. Connect the Namecheap domain to Vercel
 
-1. In **Vercel → yHatePDF → Settings → Domains**, add `yhatepdf.online` and `www.yhatepdf.online`.
+1. In **Vercel → yHatePDF → Settings → Domains**, add `yhatepdf.site` and `www.yhatepdf.site`.
 2. In Namecheap, open **Domain List → Manage → Advanced DNS**.
 3. Copy the exact DNS records Vercel shows for the apex and `www` host. Save them in Namecheap, then wait for Vercel to verify the domain.
-4. Keep `NEXT_PUBLIC_SITE_URL=https://yhatepdf.online` and redeploy once the domain is verified.
+4. Keep `NEXT_PUBLIC_SITE_URL=https://yhatepdf.site` and redeploy once the domain is verified.
 
 Do not guess old DNS values: Vercel's Domains screen is the source of truth for the records attached to this project.
 
@@ -34,7 +34,7 @@ The endpoint stores only two values: the global total and its last ten-minute ti
 
 ## 4. Turn on Google Analytics
 
-1. Create a Google Analytics 4 property and a Web data stream for `https://yhatepdf.online`.
+1. Create a Google Analytics 4 property and a Web data stream for `https://yhatepdf.site`.
 2. Copy its Measurement ID, which looks like `G-XXXXXXXXXX`.
 3. Add it in Vercel as `NEXT_PUBLIC_GA_MEASUREMENT_ID` and redeploy.
 4. Open the site and check **GA4 → Realtime**.
@@ -45,7 +45,7 @@ The GA script is intentionally absent until that environment variable exists. It
 
 1. Create a property in [Google Search Console](https://search.google.com/search-console/).
 2. Verify the Vercel domain through DNS (best for a domain property) or use Search Console’s supported URL-prefix verification.
-3. Submit `https://yhatepdf.online/sitemap.xml` under **Sitemaps**.
+3. Submit `https://yhatepdf.site/sitemap.xml` under **Sitemaps**.
 4. Use **URL Inspection** to request indexing for the home page, Merge PDF, Split PDF, PDF Studio, About, and Privacy pages after a production deploy.
 
 Indexing is decided by search engines; a sitemap requests discovery, not a ranking guarantee.
