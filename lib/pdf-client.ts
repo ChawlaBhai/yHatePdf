@@ -3,6 +3,7 @@
 import JSZip from "jszip";
 import { jsPDF } from "jspdf";
 import { PDFDocument, PDFImage, StandardFonts, rgb, degrees } from "pdf-lib";
+import { recordProcessedDocument } from "@/lib/processed-counter";
 
 export type PagePlanItem = { id: string; fileIndex: number; pageIndex: number; rotation: number };
 export type PdfPageInfo = { fileIndex: number; pageIndex: number; thumbnail: string; width: number; height: number };
@@ -12,7 +13,7 @@ export type ExportOptions = { text?: string; secondaryText?: string; position?: 
 const stem = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 52) || "document";
 const clampNumber = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
 export const outputName = (operation: string, files: File[], detail = "", extension = "pdf") => `yhatepdf_${operation}__${files.slice(0, 2).map((file) => stem(file.name)).join("-") || "document"}${detail ? `__${detail}` : ""}.${extension}`;
-export function downloadBlob(blob: Blob, name: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 5000); }
+export function downloadBlob(blob: Blob, name: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove(); recordProcessedDocument(); window.setTimeout(() => URL.revokeObjectURL(url), 5000); }
 const downloadPdf = async (pdf: PDFDocument, operation: string, files: File[], detail = "") => { const bytes = await pdf.save(); const buffer = new ArrayBuffer(bytes.length); new Uint8Array(buffer).set(bytes); downloadBlob(new Blob([buffer], { type: "application/pdf" }), outputName(operation, files, detail)); };
 
 async function pdfjs() {
@@ -186,7 +187,7 @@ export async function exportStudioPdf(files: File[], plan: PagePlanItem[], actio
       pdf.setTitle(""); pdf.setAuthor(""); pdf.setSubject(""); pdf.setKeywords([]); pdf.setCreator(""); pdf.setProducer("");
       continue;
     }
-    let signatureImage = action.type === "signature" && action.image ? await pdf.embedPng(action.image) : null;
+    const signatureImage = action.type === "signature" && action.image ? await pdf.embedPng(action.image) : null;
     for (const [index, page] of pages.entries()) {
       if (!targets.has(plan[index].id)) continue;
       const { width, height } = page.getSize();
@@ -236,6 +237,163 @@ export async function exportStudioPdf(files: File[], plan: PagePlanItem[], actio
     }
   }
   await downloadPdf(pdf, "studio", files, `${plan.length}-pages__${actions.length}-actions`);
+}
+
+export type StudioObject = {
+  id: string;
+  pageId: string;
+  type: "text" | "image" | "signature" | "watermark" | "highlight" | "shape" | "redaction";
+  x: number;
+  top: number;
+  width: number;
+  height: number;
+  rotation: number;
+  opacity: number;
+  text?: string;
+  image?: string;
+  color?: string;
+  fontSize?: number;
+  allPages?: boolean;
+};
+
+const hexRgb = (value = "#111111") => {
+  const normalized = value.replace("#", "").padEnd(6, "0").slice(0, 6);
+  return rgb(parseInt(normalized.slice(0,2),16)/255, parseInt(normalized.slice(2,4),16)/255, parseInt(normalized.slice(4,6),16)/255);
+};
+
+async function renderPlanPage(file: File, pageIndex: number, rotation: number, scale = 2) {
+  const library = await pdfjs();
+  const loading = library.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true });
+  try {
+    const source = await loading.promise;
+    const page = await source.getPage(pageIndex + 1);
+    const viewport = page.getViewport({ scale, rotation });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("Canvas export is unavailable in this browser.");
+    await page.render({ canvas, canvasContext: context, viewport, background: "white" }).promise;
+    return canvas;
+  } finally { await loading.destroy(); }
+}
+
+export async function exportObjectStudioPdf(files: File[], plan: PagePlanItem[], objects: StudioObject[]) {
+  if (!plan.length) throw new Error("Keep at least one page in the Studio.");
+  const sources = await sourcesFor(files);
+  const output = await PDFDocument.create();
+  const regular = await output.embedFont(StandardFonts.Helvetica);
+  const italic = await output.embedFont(StandardFonts.TimesRomanItalic);
+  const imageCache = new Map<string, PDFImage>();
+
+  for (const [index, item] of plan.entries()) {
+    const pageObjects = objects.filter(object => object.pageId === item.id || object.allPages);
+    const redactions = pageObjects.filter(object => object.type === "redaction");
+    let page;
+    if (redactions.length) {
+      const canvas = await renderPlanPage(files[item.fileIndex], item.pageIndex, item.rotation);
+      const context = canvas.getContext("2d")!;
+      for (const mark of redactions) {
+        context.globalAlpha = 1;
+        context.fillStyle = "#000";
+        context.fillRect(canvas.width * mark.x / 100, canvas.height * mark.top / 100, canvas.width * mark.width / 100, canvas.height * mark.height / 100);
+      }
+      const image = await output.embedPng(canvas.toDataURL("image/png"));
+      page = output.addPage([image.width / 2, image.height / 2]);
+      page.drawImage(image, { x: 0, y: 0, width: page.getWidth(), height: page.getHeight() });
+    } else {
+      const source = sources[item.fileIndex];
+      const [copied] = await output.copyPages(source, [item.pageIndex]);
+      copied.setRotation(degrees((copied.getRotation().angle + item.rotation) % 360));
+      page = output.addPage(copied);
+    }
+    const { width: pageWidth, height: pageHeight } = page.getSize();
+    for (const object of pageObjects) {
+      if (object.type === "redaction") continue;
+      const width = Math.max(4, pageWidth * object.width / 100);
+      const height = Math.max(4, pageHeight * object.height / 100);
+      const x = clampNumber(pageWidth * object.x / 100, 0, pageWidth - width);
+      const y = clampNumber(pageHeight - pageHeight * object.top / 100 - height, 0, pageHeight - height);
+      if ((object.type === "image" || object.type === "signature") && object.image) {
+        let embedded = imageCache.get(object.image);
+        if (!embedded) {
+          embedded = object.image.startsWith("data:image/jpeg") ? await output.embedJpg(object.image) : await output.embedPng(object.image);
+          imageCache.set(object.image, embedded);
+        }
+        page.drawImage(embedded, { x, y, width, height, rotate: degrees(object.rotation), opacity: object.opacity });
+      } else if (object.type === "highlight" || object.type === "shape") {
+        page.drawRectangle({ x, y, width, height, color: hexRgb(object.color || (object.type === "highlight" ? "#ffd72f" : "#efefef")), opacity: object.opacity, borderColor: object.type === "shape" ? hexRgb("#111111") : undefined, borderWidth: object.type === "shape" ? 1 : undefined, rotate: degrees(object.rotation) });
+      } else {
+        const text = (object.text || (object.type === "watermark" ? "DRAFT" : "Text")).replace(/\{\{page\}\}/g,String(index+1)).replace(/\{\{pages\}\}/g,String(plan.length)).replace(/[\r\n]+/g, " ").slice(0, 400);
+        const font = object.type === "signature" ? italic : regular;
+        const size = Math.max(6, object.fontSize || (object.type === "watermark" ? 34 : 18));
+        page.drawText(text, { x, y: y + Math.max(0, height - size), maxWidth: width, size, font, color: hexRgb(object.color), opacity: object.opacity, rotate: degrees(object.rotation) });
+      }
+    }
+  }
+  await downloadPdf(output, "studio", files, `${plan.length}-pages__${objects.length}-objects`);
+}
+
+export async function repairPdf(file: File) {
+  const toolkit = await secureToolkit();
+  const repaired = await toolkit.repair(file);
+  const count = await toolkit.pageCount(repaired);
+  downloadBlob(new Blob([new Uint8Array(repaired)],{type:"application/pdf"}),outputName("repaired",[file],`${count}-recovered-pages`));
+  return count;
+}
+
+let toolkitPromise: Promise<import("pdfstudio").PdfToolkit> | null = null;
+async function secureToolkit(){
+  if(!toolkitPromise) toolkitPromise=import("pdfstudio").then(module=>module.createPdfToolkit({wasmUrl:"/wasm/qpdf.wasm"}));
+  return toolkitPromise;
+}
+
+export async function protectPdf(file:File,options:{userPassword:string;ownerPassword?:string;print:"full"|"low"|"none";modify:"all"|"annotate"|"form"|"assembly"|"none";extract:boolean}){
+  if(!options.userPassword)throw new Error("Enter a password required to open the PDF.");
+  const toolkit=await secureToolkit();
+  const bytes=await toolkit.lock(file,{userPassword:options.userPassword,ownerPassword:options.ownerPassword||options.userPassword,keyLength:256,permissions:{print:options.print,modify:options.modify,extract:options.extract}});
+  downloadBlob(new Blob([new Uint8Array(bytes)],{type:"application/pdf"}),outputName("protected",[file],"aes-256"));
+}
+
+export async function unlockPdf(file:File,password:string){
+  if(!password)throw new Error("Enter the current PDF password.");
+  const toolkit=await secureToolkit();
+  const bytes=await toolkit.unlock(file,{password});
+  downloadBlob(new Blob([new Uint8Array(bytes)],{type:"application/pdf"}),outputName("unlocked",[file],"password-removed"));
+}
+
+export async function ocrPdf(file:File,indices:number[],onProgress?:(message:string)=>void){
+  if(!indices.length)throw new Error("Select at least one page for OCR.");
+  const [{createWorker,OEM},images]=await Promise.all([import("tesseract.js"),renderPageImages(file,indices,1.65)]);
+  onProgress?.("Loading the local English OCR model…");
+  const worker=await createWorker("eng",OEM.LSTM_ONLY,{langPath:"/tesseract",gzip:true,logger:message=>onProgress?.(`${message.status} ${Math.round((message.progress||0)*100)}%`)});
+  const recognized:string[]=[];
+  try{for(const [position,image] of images.entries()){onProgress?.(`Recognizing page ${position+1} of ${images.length}…`);const result=await worker.recognize(image.data);recognized.push(result.data.text||"");}}finally{await worker.terminate();}
+  const pdf=await PDFDocument.load(await file.arrayBuffer());const font=await pdf.embedFont(StandardFonts.Helvetica);
+  for(const [position,pageIndex] of indices.entries()){
+    const page=pdf.getPage(pageIndex),{width,height}=page.getSize();
+    const safe=recognized[position].replace(/[^\x20-\x7E\n]/g,"?").split(/\n+/).map(line=>line.trim()).filter(Boolean);
+    let y=height-12;
+    for(const line of safe.slice(0,Math.max(1,Math.floor(height/5)))){page.drawText(line.slice(0,220),{x:4,y,size:4,font,maxWidth:width-8,opacity:.01,color:rgb(1,1,1)});y-=5;if(y<4)break;}
+  }
+  await downloadPdf(pdf,"searchable",[file],`${indices.length}-ocr-pages`);
+  return recognized.reduce((total,text)=>total+text.trim().split(/\s+/).filter(Boolean).length,0);
+}
+
+export async function scannedPagesToPdf(pages: Array<{ dataUrl: string; rotation: number }>) {
+  if (!pages.length) throw new Error("Capture or add at least one scan page.");
+  const pdf = await PDFDocument.create();
+  for (const item of pages) {
+    const embedded = item.dataUrl.startsWith("data:image/png") ? await pdf.embedPng(item.dataUrl) : await pdf.embedJpg(item.dataUrl);
+    const landscape = Math.abs(item.rotation % 180) === 90;
+    const sourceWidth = landscape ? embedded.height : embedded.width;
+    const sourceHeight = landscape ? embedded.width : embedded.height;
+    const pageWidth = 595, pageHeight = 842, margin = 18;
+    const page = pdf.addPage([pageWidth,pageHeight]);
+    const scale = Math.min((pageWidth-margin*2)/sourceWidth,(pageHeight-margin*2)/sourceHeight);
+    const width=sourceWidth*scale,height=sourceHeight*scale;
+    page.drawImage(embedded,{x:(pageWidth-width)/2,y:(pageHeight-height)/2,width:embedded.width*scale,height:embedded.height*scale,rotate:degrees(item.rotation)});
+  }
+  await downloadPdf(pdf,"scanned",[],`${pages.length}-pages`);
 }
 
 async function renderedPages(file: File, indices: number[], scale: number, onImage: (pageNumber: number, canvas: HTMLCanvasElement, size: {width:number;height:number}) => Promise<void>) {

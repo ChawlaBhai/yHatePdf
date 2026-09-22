@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowUpRight, Command, Globe2, Menu, Moon, Search, ShieldCheck, Sparkles, Sun, X } from "lucide-react";
 import BrandMark from "@/components/BrandMark";
 import { categories, tools } from "@/lib/tool-registry";
+import { processedCount, processedEvent } from "@/lib/processed-counter";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -15,6 +16,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [palette, setPalette] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [query, setQuery] = useState("");
+  const [processed, setProcessed] = useState(9842);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -22,6 +24,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       setHydrated(true);
     });
     return () => cancelAnimationFrame(frame);
+  }, []);
+  useEffect(() => {
+    const sync = (event?: Event) => setProcessed(event instanceof CustomEvent && typeof event.detail === "number" ? event.detail : processedCount());
+    sync();
+    const timer = window.setInterval(sync, 30_000);
+    window.addEventListener(processedEvent, sync);
+    return () => { window.clearInterval(timer); window.removeEventListener(processedEvent, sync); };
   }, []);
   useEffect(() => {
     if (!hydrated) return;
@@ -45,7 +54,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return <div className="site-shell">
     <header className="site-header">
-      <div className="utility-bar"><span><b>• 100% IN-BROWSER</b><span className="utility-extra"> PRIVATE PDF TOOLS. NO ACCOUNTS. NO LIMITS.</span></span><span>FILES STAY ON YOUR DEVICE</span></div>
+      <div className="utility-bar"><span><b>• 100% IN-BROWSER</b><span className="utility-extra"> PRIVATE PDF TOOLS FOR EVERYDAY DOCUMENT WORK</span></span><span>PROCESSED: <b className="processed-count">{processed.toLocaleString("en-US")}</b></span></div>
       <div className="nav-wrap">
         <Link href="/" className="logo-link" aria-label="yHatePDF home"><BrandMark /></Link>
         <nav className="main-nav" aria-label="Main navigation">

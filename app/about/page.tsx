@@ -45,6 +45,6 @@ export default function AboutPage() {
         <div className="team-grid">{team.map((member)=><a key={member.name} className={`team-card ${member.className}`} href={member.url} target="_blank" rel="noopener noreferrer"><div className="team-photo"><img src={member.image} alt={member.name}/></div><strong>{member.name}<ExternalLink/></strong><span>{member.role}</span><b>{member.tag}</b></a>)}</div>
       </div>
     </section>
-    <section className="about-cta"><div><span>— READY WHEN YOUR PDF ISN'T</span><h2>One page, one action,<br/><em>one less problem.</em></h2></div><Link href="/tools/studio" className="button button-dark">OPEN PDF STUDIO <ArrowUpRight/></Link></section>
+    <section className="about-cta"><div><span>— READY WHEN YOUR PDF ISN&apos;T</span><h2>One page, one action,<br/><em>one less problem.</em></h2></div><Link href="/tools/studio" className="button button-dark">OPEN PDF STUDIO <ArrowUpRight/></Link></section>
   </main>;
 }

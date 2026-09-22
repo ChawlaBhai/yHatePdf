@@ -24,12 +24,15 @@ export async function wordToPdf(file: File) {
   return htmlToPdf(result.value, [file]);
 }
 
-export async function previewOfficeFile(file: File, kind: "word" | "excel") {
+async function powerPointSlides(file:File){const JSZip=(await import("jszip")).default;const zip=await JSZip.loadAsync(await file.arrayBuffer());const names=Object.keys(zip.files).filter(name=>/^ppt\/slides\/slide\d+\.xml$/.test(name)).sort((a,b)=>Number(a.match(/\d+/)?.[0])-Number(b.match(/\d+/)?.[0]));const parser=new DOMParser();const slides:string[][]=[];for(const name of names){const xml=await zip.file(name)!.async("string");const document=parser.parseFromString(xml,"application/xml");slides.push(Array.from(document.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/main","t")).map(node=>node.textContent?.trim()||"").filter(Boolean));}return slides;}
+
+export async function previewOfficeFile(file: File, kind: "word" | "excel" | "powerpoint") {
   if (kind === "word") {
     const mammoth = await import("mammoth");
     const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
     return result.value.slice(0, 5000) || "No readable paragraphs found.";
   }
+  if(kind==="powerpoint"){const slides=await powerPointSlides(file);return slides.slice(0,12).map((lines,index)=>`SLIDE ${index+1}\n${lines.join(" · ")||"No selectable text"}`).join("\n\n").slice(0,5000)||"No readable slides found.";}
   const ExcelJS = (await import("exceljs")).default; const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(await file.arrayBuffer() as never);
   return workbook.worksheets.map(sheet => {
@@ -38,6 +41,8 @@ export async function previewOfficeFile(file: File, kind: "word" | "excel") {
     return `${sheet.name} (${sheet.rowCount} rows)\n${rows.join("\n")}`;
   }).join("\n\n").slice(0, 5000) || "No populated sheets found.";
 }
+
+export async function powerPointToPdf(file:File){const slides=await powerPointSlides(file);if(!slides.length)throw new Error("No supported PPTX slides were found.");const pdf=await PDFDocument.create();const regular=await pdf.embedFont(StandardFonts.Helvetica);const bold=await pdf.embedFont(StandardFonts.HelveticaBold);for(const [index,lines] of slides.entries()){const page=pdf.addPage([960,540]);page.drawRectangle({x:0,y:0,width:960,height:540,color:rgb(1,1,1)});page.drawText(`SLIDE ${index+1}`,{x:46,y:490,size:11,font:bold,color:rgb(.35,.35,.38)});let y=438;for(const [lineIndex,raw] of lines.entries()){let text=raw.replace(/[^\x20-\x7E]/g,"?").replace(/\s+/g," ").slice(0,260);const size=lineIndex===0?28:17;const font=lineIndex===0?bold:regular;const chunks:string[]=[];while(text){let take=text.length;while(take>1&&font.widthOfTextAtSize(text.slice(0,take),size)>860)take--;chunks.push(text.slice(0,take));text=text.slice(take).trim();}for(const chunk of chunks){if(y<45)break;page.drawText(chunk,{x:50,y,size,font,color:rgb(.08,.08,.1)});y-=size*1.5;}if(y<45)break;}}const saved=await pdf.save();const bytes=new Uint8Array(saved.length);bytes.set(saved);downloadBlob(new Blob([bytes],{type:"application/pdf"}),outputName("slides",[file],`${slides.length}-slides__text-layout`));return slides.length;}
 
 export async function pdfToPowerPoint(file: File, indices: number[]) {
   if (!indices.length) throw new Error("Select at least one page.");
