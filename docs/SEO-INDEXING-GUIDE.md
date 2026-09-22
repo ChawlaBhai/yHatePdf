@@ -23,7 +23,7 @@ Do not guess old DNS values: Vercel's Domains screen is the source of truth for 
 
 ## 3. Processed counter: zero-service model
 
-Like iLoveMD, yHatePDF uses no counter database or tracking endpoint. Every browser calculates the same public baseline from the launch timestamp and advances it once every ten minutes. A completed local export adds its source-document count only in that browser, such as `4` for four merged PDFs. No source file, filename, page content, preview, account, browser ID, or analytics event is sent.
+Like iLoveMD, yHatePDF uses no counter database or tracking endpoint. Every browser calculates the same public baseline from the launch timestamp and advances it once every ten minutes. A supported source document that successfully loads into a workspace adds its count only in that browser, such as `4` for four PDFs loaded to merge. No source file, filename, page content, preview, account, browser ID, or analytics event is sent.
 
 ## 4. Turn on Google Analytics
 

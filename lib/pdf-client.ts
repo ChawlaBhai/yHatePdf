@@ -3,7 +3,6 @@
 import JSZip from "jszip";
 import { jsPDF } from "jspdf";
 import { PDFDocument, PDFImage, StandardFonts, rgb, degrees } from "pdf-lib";
-import { recordProcessedDocument } from "@/lib/processed-counter";
 
 export type PagePlanItem = { id: string; fileIndex: number; pageIndex: number; rotation: number };
 export type PdfPageInfo = { fileIndex: number; pageIndex: number; thumbnail: string; width: number; height: number };
@@ -17,7 +16,7 @@ const clampNumber = (value: number, minimum: number, maximum: number) => Math.ma
 // controls; password-protected documents still need Unlock PDF first.
 const loadPdf = (input: ArrayBuffer | Uint8Array) => PDFDocument.load(input, { ignoreEncryption: true });
 export const outputName = (operation: string, files: File[], detail = "", extension = "pdf") => `yhatepdf_${operation}__${files.slice(0, 2).map((file) => stem(file.name)).join("-") || "document"}${detail ? `__${detail}` : ""}.${extension}`;
-export function downloadBlob(blob: Blob, name: string, sourceDocuments = 1) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove(); recordProcessedDocument(sourceDocuments); window.setTimeout(() => URL.revokeObjectURL(url), 5000); }
+export function downloadBlob(blob: Blob, name: string, sourceDocuments = 1) { void sourceDocuments; const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 5000); }
 const downloadPdf = async (pdf: PDFDocument, operation: string, files: File[], detail = "") => { const bytes = await pdf.save(); const buffer = new ArrayBuffer(bytes.length); new Uint8Array(buffer).set(bytes); downloadBlob(new Blob([buffer], { type: "application/pdf" }), outputName(operation, files, detail), Math.max(1, files.length)); };
 
 async function pdfjs() {
