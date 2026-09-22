@@ -13,8 +13,8 @@ export type ExportOptions = { text?: string; secondaryText?: string; position?: 
 const stem = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 52) || "document";
 const clampNumber = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
 export const outputName = (operation: string, files: File[], detail = "", extension = "pdf") => `yhatepdf_${operation}__${files.slice(0, 2).map((file) => stem(file.name)).join("-") || "document"}${detail ? `__${detail}` : ""}.${extension}`;
-export function downloadBlob(blob: Blob, name: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove(); recordProcessedDocument(); window.setTimeout(() => URL.revokeObjectURL(url), 5000); }
-const downloadPdf = async (pdf: PDFDocument, operation: string, files: File[], detail = "") => { const bytes = await pdf.save(); const buffer = new ArrayBuffer(bytes.length); new Uint8Array(buffer).set(bytes); downloadBlob(new Blob([buffer], { type: "application/pdf" }), outputName(operation, files, detail)); };
+export function downloadBlob(blob: Blob, name: string, sourceDocuments = 1) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove(); recordProcessedDocument(sourceDocuments); window.setTimeout(() => URL.revokeObjectURL(url), 5000); }
+const downloadPdf = async (pdf: PDFDocument, operation: string, files: File[], detail = "") => { const bytes = await pdf.save(); const buffer = new ArrayBuffer(bytes.length); new Uint8Array(buffer).set(bytes); downloadBlob(new Blob([buffer], { type: "application/pdf" }), outputName(operation, files, detail), Math.max(1, files.length)); };
 
 async function pdfjs() {
   const library = await import("pdfjs-dist");
@@ -80,7 +80,7 @@ export async function exportSplit(files: File[], plan: PagePlanItem[], separate:
   if (!separate) return exportPagePlan(files, plan, "split");
   const sources = await sourcesFor(files); const zip = new JSZip();
   for (const [outputIndex,item] of plan.entries()) { const pdf = await PDFDocument.create(); const [page] = await pdf.copyPages(sources[item.fileIndex], [item.pageIndex]); page.setRotation(degrees((page.getRotation().angle + item.rotation) % 360)); pdf.addPage(page); zip.file(outputName("split", [files[item.fileIndex]], `part-${outputIndex + 1}__source-page-${item.pageIndex + 1}`), await pdf.save()); }
-  downloadBlob(await zip.generateAsync({ type: "blob" }), outputName("split", files, `${plan.length}-individual-pages`, "zip"));
+  downloadBlob(await zip.generateAsync({ type: "blob" }), outputName("split", files, `${plan.length}-individual-pages`, "zip"), Math.max(1, files.length));
 }
 
 export async function exportAdjusted(files: File[], plan: PagePlanItem[], operation: string, options: ExportOptions) {
@@ -544,7 +544,7 @@ export async function comparePdfs(files: File[]) {
   } finally { await Promise.all(loadings.map(loading => loading.destroy())); }
   const rows = results.map(row => `<article><h2>Page ${row.number} — ${row.status}</h2><p>${row.visual}</p><div><section><h3>Original text</h3><pre>${escapeHtml(row.first) || "(none)"}</pre></section><section><h3>Revised text</h3><pre>${escapeHtml(row.second) || "(none)"}</pre></section></div></article>`).join("");
   const report = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>PDF comparison</title><style>body{font:16px/1.5 system-ui;margin:3rem auto;padding:0 1rem;max-width:1100px;color:#161616}header{border-bottom:2px solid;padding-bottom:1rem}article{border-bottom:1px solid #bbb;padding:1rem 0}article div{display:grid;grid-template-columns:1fr 1fr;gap:1rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f4f4;padding:1rem;min-height:4rem}@media(max-width:650px){article div{grid-template-columns:1fr}}</style></head><body><header><h1>PDF comparison</h1><p>${escapeHtml(files[0].name)} → ${escapeHtml(files[1].name)} · ${results.filter(row => row.status !== "Same").length} changed or unmatched pages</p><p>Visual percentages compare small raster samples; text is extracted from selectable text. Review the original files for critical decisions.</p></header>${rows}</body></html>`;
-  downloadBlob(new Blob([report], { type: "text/html;charset=utf-8" }), outputName("comparison", files, `${results.length}-pages`, "html"));
+  downloadBlob(new Blob([report], { type: "text/html;charset=utf-8" }), outputName("comparison", files, `${results.length}-pages`, "html"), files.length);
   return { pages: results.length, changed: results.filter(row => row.status !== "Same").length };
 }
 
@@ -588,7 +588,7 @@ export async function htmlToPdf(value: string, files: File[]) {
     const pdf = new jsPDF({ unit: "pt", format: "a4", compress: true });
     await pdf.html(frame, { x: 32, y: 32, width: 530, windowWidth: 836, autoPaging: "text", margin: [32, 32, 32, 32] });
     const count = pdf.getNumberOfPages();
-    downloadBlob(pdf.output("blob"), outputName("html", files, `${count}-pages`));
+    downloadBlob(pdf.output("blob"), outputName("html", files, `${count}-pages`), Math.max(1, files.length));
     return count;
   } finally { frame.remove(); }
 }

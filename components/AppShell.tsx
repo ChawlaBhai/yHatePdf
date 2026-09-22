@@ -16,7 +16,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [palette, setPalette] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [query, setQuery] = useState("");
-  const [processed, setProcessed] = useState(9842);
+  const [processed, setProcessed] = useState(0);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -88,7 +88,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div><strong>— 02 WORKSPACES</strong><Link href="/tools/studio">PDF Studio<ArrowUpRight size={13}/></Link><Link href="/extension">Chrome Extension<ArrowUpRight size={13}/></Link><Link href="/#tools">All 50+ tools<ArrowUpRight size={13}/></Link><Link href="/tools/sign">Sign PDF<ArrowUpRight size={13}/></Link><Link href="/tools/compress">Compress PDF<ArrowUpRight size={13}/></Link></div>
         <div><strong>— 03 PROJECT</strong><Link href="/about">About yHatePDF<ArrowUpRight size={13} /></Link><Link href="/privacy">Privacy Policy<ArrowUpRight size={13} /></Link><Link href="/terms">Terms & Conditions<ArrowUpRight size={13} /></Link><a href="https://ilovemd.online" target="_blank" rel="noopener noreferrer">iLoveMD.online<ArrowUpRight size={13} /></a><span>Local processing. No account.</span></div>
       </div>
-      <div className="footer-bottom"><span>© 2026 yHatePDF.online</span><span>PDFs were never the problem. Bad PDF tools were.</span></div>
+      <div className="footer-bottom"><span>© 2026 yHatePDF.online</span><span>PROCESSED: <b className="processed-count">{processed.toLocaleString("en-US")}</b> · PDFs were never the problem. Bad PDF tools were.</span></div>
     </footer>
     {palette && <div className="palette-backdrop" onMouseDown={() => setPalette(false)}><section className="palette-dialog" role="dialog" aria-modal="true" aria-label="Find a PDF tool" onMouseDown={(event) => event.stopPropagation()}><div className="palette-input"><Search size={19} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && found[0]) navigate(found[0].route); }} placeholder="Search tools: combine, password, pages…" /><button onClick={() => setPalette(false)} aria-label="Close tool search"><X size={18} /></button></div><div className="palette-results"><p>PDF TOOLS · {found.length} RESULTS</p>{found.map((tool) => { const Icon = tool.icon; return <button key={tool.id} onClick={() => navigate(tool.route)}><span className={`palette-icon ${categories[tool.category].color}`}><Icon size={18} /></span><span><b>{tool.name}</b><small>{tool.description}</small></span><em>{tool.status === "ready" ? "READY" : "IN RESEARCH"}</em></button>; })}</div><div className="palette-bottom"><span>↑↓ Browse · ↵ Open · Esc Close</span><span>{pathname === "/" ? "Home" : pathname}</span></div></section></div>}
   </div>;

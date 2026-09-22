@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-export const metadata: Metadata = { title:"Terms & Conditions — yHatePDF", description:"Terms for using yHatePDF's local-first PDF tools and Chrome extension." };
+export const metadata: Metadata = { title:"Terms & Conditions", description:"Terms for using yHatePDF's local-first PDF tools and Chrome extension.", alternates: { canonical: "/terms" } };
 const sections=[
   ["1. Acceptance","By using yHatePDF.online, its downloadable extension kit, or its browser-based tools, you agree to these terms. If you do not agree, do not use the service."],
   ["2. Permitted Use","You may use yHatePDF for lawful personal, academic, and commercial document tasks. You may not use the service to violate rights, bypass access controls, distribute malware, attack the website, or process material you are not authorized to handle."],

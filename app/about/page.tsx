@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowUpRight, Cpu, ExternalLink, HeartHandshake, Lock, Rocket, ShieldCheck, Sparkles, Users } from "lucide-react";
 import BrandMark from "@/components/BrandMark";
 
-export const metadata: Metadata = { title: "About Us — yHatePDF", description: "Meet the people and principles behind yHatePDF's private, practical PDF toolkit." };
+export const metadata: Metadata = { title: "About Us", description: "Meet the people and principles behind yHatePDF's private, practical PDF toolkit.", alternates: { canonical: "/about" } };
 
 const team = [
   { name:"Shiro", role:"Founder & CEO", tag:"THE VISIONARY", image:"/team/shiro.png", url:"https://www.linkedin.com/in/shiro-ilovemd/?utm_source=yhatepdf.online", className:"orange" },

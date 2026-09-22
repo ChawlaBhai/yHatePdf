@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Clock3, FileStack, Globe2, Keyboard, ShieldCheck, Sparkles } from "lucide-react";
 import BrandMark from "@/components/BrandMark";
 
-export const metadata: Metadata = { title:"Chrome Extension — Coming Soon — yHatePDF", description:"The yHatePDF Chrome Extension is landing shortly." };
+export const metadata: Metadata = { title:"Chrome Extension — Coming Soon", description:"The yHatePDF Chrome Extension is landing shortly.", alternates: { canonical: "/extension" } };
 
 const tools=[["MERGE PDF","Combine files and mix pages."],["SPLIT PDF","Choose ranges or individual pages."],["PDF STUDIO","Run multiple edits in one session."],["COMPRESS PDF","Optimize a file locally."],["SIGN PDF","Add a visible typed or drawn signature."],["ORGANIZE","Reorder, rotate, duplicate, or remove pages."]];
 
