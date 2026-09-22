@@ -54,13 +54,14 @@ yHatePDF is live: merge, split, scan, sign, edit and organize PDFs right in your
 
 No account. No watermark. No drama.
 
-yhatepdf.vercel.app
+yhatepdf.online
 
 ## Suggested launch assets
 
 - `assets/yhatepdf-wordmark.svg` — clean wordmark for profile and cover use
-- `assets/yhatepdf-launch-hero.png` — Product Hunt gallery cover
-- `assets/yhatepdf-launch-social.png` — square social post
+- `assets/yhatepdf-launch-hero-v2.png` — finished wide launch hero with WHY HATE PDF? branding, privacy promise, feature line, and URL. Use for Product Hunt cover, X, LinkedIn, and website banners.
+- `assets/yhatepdf-launch-social-v2.png` — finished square launch poster with WHY HATE PDF? branding, the one-line promise, feature lineup, privacy label, and URL. Use for Peerlist, Product Hunt gallery, Instagram, and WhatsApp.
+- The original `launch-hero.png` and `launch-social.png` remain available as clean art-only backgrounds.
 
 ## Screenshot order for a gallery
 
