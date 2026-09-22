@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowUpRight, Command, Globe2, Menu, Moon, Search, ShieldCheck, Sparkles, Sun, X } from "lucide-react";
 import BrandMark from "@/components/BrandMark";
 import { categories, tools } from "@/lib/tool-registry";
-import { processedEvent } from "@/lib/processed-counter";
+import { processedCount, processedEvent } from "@/lib/processed-counter";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -26,24 +26,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => cancelAnimationFrame(frame);
   }, []);
   useEffect(() => {
-    let active = true;
-    const requestCount = async (amount?: number) => {
-      try {
-        const response = await fetch("/api/processed", amount ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ amount }) } : { cache: "no-store" });
-        const result = await response.json() as { count?: unknown };
-        if (active && typeof result.count === "number") setProcessed(result.count);
-      } catch { /* Leave the last known global total visible while offline. */ }
-    };
-    const sync = () => { void requestCount(); };
+    const sync = () => setProcessed(processedCount());
     const record = (event: Event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
-      const amount = detail && typeof detail === "object" && "amount" in detail && typeof detail.amount === "number" ? detail.amount : 1;
-      void requestCount(Math.max(1, Math.floor(amount)));
+      if (detail && typeof detail === "object" && "count" in detail && typeof detail.count === "number") setProcessed(detail.count);
+      else sync();
     };
     sync();
     const timer = window.setInterval(sync, 30_000);
     window.addEventListener(processedEvent, record);
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener(processedEvent, record); };
+    return () => { window.clearInterval(timer); window.removeEventListener(processedEvent, record); };
   }, []);
   useEffect(() => {
     if (!hydrated) return;

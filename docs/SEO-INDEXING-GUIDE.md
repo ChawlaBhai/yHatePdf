@@ -21,16 +21,9 @@ If a custom domain is attached later, replace that value with its canonical HTTP
 
 Do not guess old DNS values: Vercel's Domains screen is the source of truth for the records attached to this project.
 
-## 3. Enable the real global processed counter
+## 3. Processed counter: zero-service model
 
-The counter has a tiny server endpoint and needs a durable shared counter store. Create an Upstash Redis database, then add these **server-only** Vercel environment variables for Production and Preview:
-
-```text
-UPSTASH_REDIS_REST_URL=https://...upstash.io
-UPSTASH_REDIS_REST_TOKEN=...
-```
-
-The endpoint stores only two values: the global total and its last ten-minute tick. A completed local export sends just an integer increment, such as `4` for four merged PDFs. No source file, filename, page content, preview, account, or browser ID is sent. After the variables are set, the shared total begins at `0`, increments globally for each completed export, and advances once every ten minutes.
+Like iLoveMD, yHatePDF uses no counter database or tracking endpoint. Every browser calculates the same public baseline from the launch timestamp and advances it once every ten minutes. A completed local export adds its source-document count only in that browser, such as `4` for four merged PDFs. No source file, filename, page content, preview, account, browser ID, or analytics event is sent.
 
 ## 4. Turn on Google Analytics
 
